@@ -365,11 +365,13 @@ def test_download_datum(pachyderm_resources, dev_server):
         }
     }
 
+    print("mounting datum")
     r = requests.put(f"{BASE_URL}/datums/_mount", data=json.dumps(input_spec))
     assert r.status_code == 200, r.text
     assert r.json()["idx"] == 0
     assert r.json()["num_datums"] == 4
     assert r.json()["all_datums_received"] == True
+    print("downloading datum")
     r = requests.put(f"{BASE_URL}/datums/_download")
     assert r.status_code == 200, r.text
     assert len(list(os.walk(PFS_MOUNT_DIR))[0][1]) == 3
@@ -397,11 +399,13 @@ def test_download_datum(pachyderm_resources, dev_server):
         == 1
     )
 
+    print("next datum")
     r = requests.put(f"{BASE_URL}/datums/_next")
     assert r.status_code == 200, r.text
     assert r.json()["idx"] == 1
     assert r.json()["num_datums"] == 4
     assert r.json()["all_datums_received"] == True
+    print("downloading datum")
     r = requests.put(f"{BASE_URL}/datums/_download")
     assert r.status_code == 200, r.text
     assert len(list(os.walk(PFS_MOUNT_DIR))[0][1]) == 3
