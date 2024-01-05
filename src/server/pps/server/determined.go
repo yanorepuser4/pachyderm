@@ -336,7 +336,7 @@ func provisionDeterminedPipelineUser(ctx context.Context, dc det.DeterminedClien
 		Password: password,
 	})
 	if err != nil {
-		if status.Code(err) == codes.InvalidArgument && strings.Contains(err.Error(), "user already exists") {
+		if status.Code(err) == codes.InvalidArgument && strings.Contains(err.Error(), "error inserting user") {
 			u, err := getDetPipelineUser(ctx, dc, p)
 			if err != nil {
 				return 0, err
