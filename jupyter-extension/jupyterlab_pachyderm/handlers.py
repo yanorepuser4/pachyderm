@@ -461,7 +461,9 @@ def setup_handlers(web_app):
         )
     except FileNotFoundError:
         if PACHD_ADDRESS:
-            client = Client().from_pachd_address(pachd_address=PACHD_ADDRESS, auth_token=DEX_TOKEN)
+            tmp_client = Client().from_pachd_address(pachd_address=PACHD_ADDRESS)
+            pach_token = tmp_client.auth.authenticate(id_token=DEX_TOKEN).pach_token
+            client = Client().from_pachd_address(pachd_address=PACHD_ADDRESS, auth_token=pach_token)
         else:
             client = Client()
             get_logger().debug(
