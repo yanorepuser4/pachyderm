@@ -4,9 +4,9 @@ import {useCombobox} from 'downshift';
 
 export type DropdownComboboxProps = {
   items: string[];
+  onSelectedItemChange: (selectedItem: string) => void;
   initialSelectedItem?: string | null;
   placeholder?: string;
-  onSelectedItemChange?: (selectedItem: string) => void;
 };
 
 export const DropdownCombobox: React.FC<DropdownComboboxProps> = ({

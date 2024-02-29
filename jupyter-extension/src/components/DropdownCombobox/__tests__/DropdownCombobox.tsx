@@ -64,4 +64,5 @@ describe('DropdownCombobox', () => {
 
   // TODO: test for onSelectedItemChange trigger
   // TODO: test for clearing out selectedItem on isOpen
+  // TODO: Test for highlighted index?
 });
