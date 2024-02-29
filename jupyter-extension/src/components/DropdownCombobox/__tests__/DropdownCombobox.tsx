@@ -10,9 +10,9 @@ describe('DropdownCombobox', () => {
       items: ['item1', 'item2', 'item3'],
       placeholder: 'placeholder',
       onSelectedItemChange: () => {},
-    }
+    };
 
-    const {getByTestId} = render(<DropdownCombobox {...props}/>,);
+    const {getByTestId} = render(<DropdownCombobox {...props} />);
 
     const input = getByTestId('DropdownCombobox-input');
     expect(input).toHaveAttribute('placeholder', 'placeholder');
@@ -23,9 +23,9 @@ describe('DropdownCombobox', () => {
       initialSelectedItem: 'item1',
       items: ['item1', 'item2', 'item3'],
       onSelectedItemChange: () => {},
-    }
+    };
 
-    const {getByTestId} = render(<DropdownCombobox {...props}/>,);
+    const {getByTestId} = render(<DropdownCombobox {...props} />);
 
     const input = getByTestId('DropdownCombobox-input');
     expect(input).toHaveValue('item1');
@@ -38,13 +38,13 @@ describe('DropdownCombobox', () => {
       initialSelectedItem: null,
       items: ['foo', 'bar'],
       onSelectedItemChange: () => {},
-    }
+    };
 
-    const {getByTestId} = render(<DropdownCombobox {...props}/>,);
+    const {getByTestId} = render(<DropdownCombobox {...props} />);
 
     let ul = getByTestId('DropdownCombobox-ul');
     expect(ul.children).toHaveLength(2);
-    let liFoo = getByTestId('DropdownCombobox-li-foo');
+    const liFoo = getByTestId('DropdownCombobox-li-foo');
     expect(liFoo).toHaveTextContent('foo');
     let liBar = getByTestId('DropdownCombobox-li-bar');
     expect(liBar).toHaveTextContent('bar');
