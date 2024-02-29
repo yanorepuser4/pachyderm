@@ -3,10 +3,10 @@ import React from 'react';
 import {useCombobox} from 'downshift';
 
 export type DropdownComboboxProps = {
-  initialSelectedItem: string | null;
   items: string[];
+  initialSelectedItem?: string | null;
   placeholder?: string;
-  onSelectedItemChange: (selectedItem: string) => void;
+  onSelectedItemChange?: (selectedItem: string) => void;
 };
 
 export const DropdownCombobox: React.FC<DropdownComboboxProps> = ({

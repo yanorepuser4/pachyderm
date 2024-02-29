@@ -5,27 +5,30 @@ import DropdownCombobox, {DropdownComboboxProps} from '../DropdownCombobox';
 
 describe('DropdownCombobox', () => {
   it('should render placeholder', async () => {
-    const props: DropdownComboboxProps = {
-      initialSelectedItem: null,
-      items: ['item1', 'item2', 'item3'],
-      placeholder: 'placeholder',
-      onSelectedItemChange: () => {},
-    };
-
-    const {getByTestId} = render(<DropdownCombobox {...props} />);
+    const {getByTestId} = render(
+      <DropdownCombobox
+        items={[]}
+        placeholder="placeholder"
+        onSelectedItemChange={() => {
+          // Do nothing
+        }}
+      />,
+    );
 
     const input = getByTestId('DropdownCombobox-input');
     expect(input).toHaveAttribute('placeholder', 'placeholder');
   });
 
   it('should select initial item', async () => {
-    const props: DropdownComboboxProps = {
-      initialSelectedItem: 'item1',
-      items: ['item1', 'item2', 'item3'],
-      onSelectedItemChange: () => {},
-    };
-
-    const {getByTestId} = render(<DropdownCombobox {...props} />);
+    const {getByTestId} = render(
+      <DropdownCombobox
+        items={['item1', 'item2', 'item3']}
+        initialSelectedItem="item1"
+        onSelectedItemChange={() => {
+          // Do nothing
+        }}
+      />,
+    );
 
     const input = getByTestId('DropdownCombobox-input');
     expect(input).toHaveValue('item1');
@@ -34,13 +37,14 @@ describe('DropdownCombobox', () => {
   });
 
   it('should filter items based on input', async () => {
-    const props: DropdownComboboxProps = {
-      initialSelectedItem: null,
-      items: ['foo', 'bar'],
-      onSelectedItemChange: () => {},
-    };
-
-    const {getByTestId} = render(<DropdownCombobox {...props} />);
+    const {getByTestId} = render(
+      <DropdownCombobox
+        items={['foo', 'bar']}
+        onSelectedItemChange={() => {
+          // Do nothing
+        }}
+      />,
+    );
 
     let ul = getByTestId('DropdownCombobox-ul');
     expect(ul.children).toHaveLength(2);
