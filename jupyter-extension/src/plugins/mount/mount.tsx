@@ -145,17 +145,11 @@ export class MountPlugin implements IMountPlugin {
           {(_, mounted) => (
             <UseSignal signal={this._poller.unmountedSignal}>
               {(_, unmounted) => (
-                <UseSignal signal={this._poller.projectSignal}>
-                  {(_, projects) => (
-                    <Explore
-                      mounted={mounted || this._poller.mounted}
-                      unmounted={unmounted || this._poller.unmounted}
-                      projects={projects || this._poller.projects}
-                      openPFS={this.openPFS}
-                      updateData={this._poller.updateData}
-                    />
-                  )}
-                </UseSignal>
+                <Explore
+                  mounted={mounted || this._poller.mounted}
+                  unmounted={unmounted || this._poller.unmounted}
+                  updateData={this._poller.updateData}
+                />
               )}
             </UseSignal>
           )}
