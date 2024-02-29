@@ -12,7 +12,7 @@ import {INotebookModel, NotebookPanel} from '@jupyterlab/notebook';
 import {Contents} from '@jupyterlab/services';
 import {settingsIcon} from '@jupyterlab/ui-components';
 import {Signal} from '@lumino/signaling';
-import {SplitPanel, TabPanel, Widget} from '@lumino/widgets';
+import {SplitPanel, Panel, TabPanel, Widget} from '@lumino/widgets';
 
 import {mountLogoIcon} from '../../utils/icons';
 import {PollMounts} from './pollMounts';
@@ -52,7 +52,7 @@ export class MountPlugin implements IMountPlugin {
   private _fullPageError: ReactWidget;
   private _configScreen: ReactWidget;
   private _pipelineScreen: ReactWidget;
-  private _exploreScreen: SplitPanel;
+  private _exploreScreen: Panel;
   private _datumScreen: SplitPanel;
 
   private _pfsBrowser: FileBrowser;
@@ -138,7 +138,7 @@ export class MountPlugin implements IMountPlugin {
       'pfs',
     );
 
-    this._exploreScreen = new SplitPanel({orientation: 'vertical'});
+    this._exploreScreen = new Panel();
     this._exploreScreen.addWidget(
       ReactWidget.create(
         <UseSignal signal={this._poller.mountedSignal}>
