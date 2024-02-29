@@ -26,7 +26,7 @@ import {HealthCheckStatus, MountSettings} from '../types';
 
 jest.mock('../../../handler');
 
-describe.skip('mount plugin', () => {
+describe('mount plugin', () => {
   let app: JupyterLab;
   let settings: MountSettings;
   let docManager: IDocumentManager;
