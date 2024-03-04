@@ -49,7 +49,7 @@ export const DropdownCombobox: React.FC<DropdownComboboxProps> = ({
     onSelectedItemChange: ({selectedItem}) => {
       onSelectedItemChange(selectedItem || null);
     },
-  }
+  });
 
   return (
     <div className="pachyderm-DropdownCombobox">
