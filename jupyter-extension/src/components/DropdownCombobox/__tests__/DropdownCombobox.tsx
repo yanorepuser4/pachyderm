@@ -62,7 +62,78 @@ describe('DropdownCombobox', () => {
     expect(liBar).toHaveTextContent('bar');
   });
 
-  // TODO: test for onSelectedItemChange trigger
-  // TODO: test for clearing out selectedItem on isOpen
-  // TODO: Test for highlighted index?
+  it('should select new item', async () => {
+    let selectedItem: string | null = null;
+    const {getByTestId} = render(
+      <DropdownCombobox
+        items={['foo', 'bar']}
+        onSelectedItemChange={(newSelectedItem) => {
+          selectedItem = newSelectedItem;
+        }}
+      />,
+    );
+
+    const input = getByTestId('DropdownCombobox-input');
+    fireEvent.change(input, {target: {value: 'ba'}});
+    fireEvent.click(getByTestId('DropdownCombobox-li-bar'));
+    expect(selectedItem).toBe('bar');
+  });
+
+  it('should be open by default if no initial selected item', async () => {
+    const {getByTestId} = render(
+      <DropdownCombobox
+        items={['foo', 'bar']}
+        onSelectedItemChange={(newSelectedItem) => {
+          // Do nothing
+        }}
+      />,
+    );
+
+    const ul = getByTestId('DropdownCombobox-ul');
+    expect(ul.children).toHaveLength(2);
+  });
+
+  it('should clear selected item if opened with a selected item', async () => {
+    let selectedItem: string | null = null;
+    const {getByTestId} = render(
+      <DropdownCombobox
+        items={['foo', 'bar']}
+        onSelectedItemChange={(newSelectedItem) => {
+          selectedItem = newSelectedItem;
+        }}
+      />,
+    );
+
+    const input = getByTestId('DropdownCombobox-input');
+    fireEvent.change(input, {target: {value: 'ba'}});
+    fireEvent.click(getByTestId('DropdownCombobox-li-bar'));
+    expect(selectedItem).toBe('bar');
+
+    fireEvent.click(getByTestId('DropdownCombobox-input'));
+    expect(selectedItem).toBeNull();
+  });
+
+  it('should highlight items on mouse over', async () => {
+    const {getByTestId} = render(
+      <DropdownCombobox
+        items={['foo', 'bar']}
+        onSelectedItemChange={(newSelectedItem) => {
+          // Do nothing
+        }}
+      />,
+    );
+
+    const liBar = getByTestId('DropdownCombobox-li-bar');
+    fireEvent.mouseOver(liBar);
+    expect(liBar).toHaveStyle('background-color: bde4ff');
+  });
 });
+
+// # TODO: DropdownComponent tests
+// TODO: consider keyboard navigation tets?
+// # TODO DropdownComponent
+// TODO: Show the five most recents first potentially with a separator
+// TODO: Post about this in #nbredesign channel. Potentially
+// # TODO Explore
+// TODO: Figure out why after login the components are stale? Maybe unmount the mount?
+// TODO: Change mount to only unmount/remount if the branch changes

@@ -1,21 +1,24 @@
 import React from 'react';
-
 import {useCombobox} from 'downshift';
 
 export type DropdownComboboxProps = {
-  items: string[];
-  onSelectedItemChange: (selectedItem: string) => void;
   initialSelectedItem?: string | null;
+  items: string[];
+  onSelectedItemChange: (selectedItem: string | null) => void;
   placeholder?: string;
+  testIdPrefix?: string;
 };
 
 export const DropdownCombobox: React.FC<DropdownComboboxProps> = ({
   initialSelectedItem,
   items,
-  placeholder,
   onSelectedItemChange,
+  placeholder,
+  testIdPrefix,
 }) => {
   const [inputItems, setInputItems] = React.useState(items);
+
+  testIdPrefix = testIdPrefix || '';
   const {
     isOpen,
     getMenuProps,
@@ -38,45 +41,42 @@ export const DropdownCombobox: React.FC<DropdownComboboxProps> = ({
       );
     },
     onIsOpenChange: ({isOpen, selectedItem}) => {
+      // Clear selectedItem on opening if there is a selected item
       if (isOpen && selectedItem) {
         selectItem(null);
       }
     },
     onSelectedItemChange: ({selectedItem}) => {
-      if (!selectedItem) {
-        return;
-      }
-
-      onSelectedItemChange(selectedItem);
+      onSelectedItemChange(selectedItem || null);
     },
-  });
+  }
 
-  // TODO: Consider clearing the text on click
-  // TODO: Show the five most recents first potentially with a separator
-  // TODO: Post about this in #nbredesign channel. Potentially
   return (
     <div className="pachyderm-DropdownCombobox">
       <div className="bp3-input-group jp-InputGroup">
         <input
           {...getInputProps()}
           className="bp3-input"
-          data-testid="DropdownCombobox-input"
           placeholder={placeholder}
+          data-testid={`${testIdPrefix}DropdownCombobox-input`}
         />
       </div>
-      <ul {...getMenuProps()} data-testid="DropdownCombobox-ul">
+      <ul
+        {...getMenuProps()}
+        data-testid={`${testIdPrefix}DropdownCombobox-ul`}
+      >
         {(isOpen || !selectedItem) &&
           inputItems.map((item, index) => (
             <li
               style={{
                 backgroundColor: highlightedIndex === index ? '#bde4ff' : '',
               }}
-              data-testid={`DropdownCombobox-li-${item}`}
               key={`${item}${index}`}
               {...getItemProps({
                 item,
                 index,
               })}
+              data-testid={`${testIdPrefix}DropdownCombobox-li-${item}`}
             >
               {item}
             </li>

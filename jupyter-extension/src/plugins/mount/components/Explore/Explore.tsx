@@ -1,7 +1,7 @@
 import React, {useState} from 'react';
 import {showErrorMessage} from '@jupyterlab/apputils';
 
-import {Repo, Mount, ProjectInfo, ListMountsResponse} from '../../types';
+import {Repo, Mount, ListMountsResponse} from '../../types';
 import {DropdownCombobox} from '../../../../components/DropdownCombobox/DropdownCombobox';
 import {requestAPI} from '../../../../handler';
 
@@ -12,6 +12,12 @@ type ExploreProps = {
 };
 
 const Explore: React.FC<ExploreProps> = ({mounted, unmounted, updateData}) => {
+  // TODO: initial loading...... Maybe show some text? Also this probably fixes the login issue
+  if (mounted.length === 0 && unmounted.length === 0) {
+    return (<></>);
+  }
+
+
   // In the event of some how multiple repos being mounted we should unmount all to reset to the default state.
   if (mounted.length > 1) {
     umountAll();
@@ -22,30 +28,43 @@ const Explore: React.FC<ExploreProps> = ({mounted, unmounted, updateData}) => {
     return <></>;
   }
 
-  const {projectRepos, selectedRepo, branches, selectedBranch} =
+  const {projectRepos, selectedRepo: selectedProjectRepo, branches, selectedBranch} =
     getMountedStatus(mounted, unmounted);
 
+  const [projectRepo, setProjectRepo] = useState(selectedProjectRepo);
   return (
     <div className="pachyderm-explore-view">
       <DropdownCombobox
-        initialSelectedItem={selectedRepo}
+        testIdPrefix="ProjectRepo-"
+        initialSelectedItem={selectedProjectRepo}
         items={projectRepos}
         placeholder="project/repo"
         onSelectedItemChange={(projectRepo) => {
+          console.log(projectRepo)
+          setProjectRepo(projectRepo || '');
+          if (!projectRepo) {
+            return;
+          }
+
           (async () => {
             updateData(await mount(projectRepo));
           })();
         }}
       />
-      {!branches ? (
+      {!branches || !projectRepo ? (
         <></>
       ) : (
         <DropdownCombobox
+          testIdPrefix="Branch-"
           initialSelectedItem={selectedBranch}
           items={branches}
           placeholder="branch"
           onSelectedItemChange={(selectedBranch) => {
-            if (!selectedRepo) {
+            if (!selectedBranch) {
+              return;
+            }
+
+            if (!selectedProjectRepo) {
               umountAll();
               showErrorMessage(
                 'Unexpected Error',
@@ -55,7 +74,7 @@ const Explore: React.FC<ExploreProps> = ({mounted, unmounted, updateData}) => {
             }
 
             (async () => {
-              updateData(await mount(selectedRepo, selectedBranch));
+              updateData(await mount(selectedProjectRepo, selectedBranch));
             })();
           }}
         />
@@ -98,6 +117,7 @@ type MountedStatus = {
   selectedBranch: string | null;
 };
 
+// TODO: unit test this
 const getMountedStatus = (
   mounted: Mount[],
   unmounted: Repo[],
