@@ -4,13 +4,15 @@ describe('mount', () => {
     cy.isAppReady();
     cy.unmountAllRepos();
     cy.openMountPlugin();
-    cy.findByTestId('ProjectRepo-DropdownCombobox-li-default/images')
+    cy.findByTestId('ProjectRepo-DropdownCombobox-li-default/images');
     cy.wait(3000);
   });
 
   it('should mount pachyderm repo', () => {
     cy.findByTestId('ProjectRepo-DropdownCombobox-li-default/images').click();
-    cy.get('#jupyterlab-pachyderm-browser-pfs').findAllByText('default_images').should('have.length', 1);
+    cy.get('#jupyterlab-pachyderm-browser-pfs')
+      .findAllByText('default_images')
+      .should('have.length', 1);
   });
 
   it('file browser should show correct breadcrumbs', () => {

@@ -14,9 +14,8 @@ type ExploreProps = {
 const Explore: React.FC<ExploreProps> = ({mounted, unmounted, updateData}) => {
   // TODO: initial loading...... Maybe show some text? Also this probably fixes the login issue
   if (mounted.length === 0 && unmounted.length === 0) {
-    return (<></>);
+    return <></>;
   }
-
 
   // In the event of some how multiple repos being mounted we should unmount all to reset to the default state.
   if (mounted.length > 1) {
@@ -28,8 +27,12 @@ const Explore: React.FC<ExploreProps> = ({mounted, unmounted, updateData}) => {
     return <></>;
   }
 
-  const {projectRepos, selectedRepo: selectedProjectRepo, branches, selectedBranch} =
-    getMountedStatus(mounted, unmounted);
+  const {
+    projectRepos,
+    selectedRepo: selectedProjectRepo,
+    branches,
+    selectedBranch,
+  } = getMountedStatus(mounted, unmounted);
 
   const [projectRepo, setProjectRepo] = useState(selectedProjectRepo);
   return (
@@ -40,7 +43,6 @@ const Explore: React.FC<ExploreProps> = ({mounted, unmounted, updateData}) => {
         items={projectRepos}
         placeholder="project/repo"
         onSelectedItemChange={(projectRepo) => {
-          console.log(projectRepo)
           setProjectRepo(projectRepo || '');
           if (!projectRepo) {
             return;
