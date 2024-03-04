@@ -90,7 +90,7 @@ export class MountPlugin implements IMountPlugin {
 
     // This is used to detect if the config goes bad (pachd address changes)
     this._poller.healthSignal.connect((_, healthCheck) => {
-      const status = healthCheck.status;
+      const status = healthCheck ? healthCheck.status : this._poller.health;
       if (
         status === 'HEALTHY_INVALID_CLUSTER' ||
         status === 'HEALTHY_LOGGED_OUT'
@@ -460,7 +460,7 @@ export class MountPlugin implements IMountPlugin {
     return this._readyPromise;
   }
 
-  private setCurrentView(widget: Widget) {
+  setCurrentView(widget: Widget) {
     this._panel.currentWidget = widget;
   }
 }

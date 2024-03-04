@@ -799,7 +799,7 @@ jobs:
   jupyter-extension-integration-test:
     resource_class: xlarge
     machine:
-      image: ubuntu-2004:202107-02
+      image: << pipeline.parameters.machine_image >>
     working_directory: ~/project/jupyter-extension
     steps:
       - checkout:
@@ -836,7 +836,7 @@ jobs:
   jupyter-extension-e2e-test:
     resource_class: xlarge
     machine:
-      image: ubuntu-2004:202111-01
+      image: << pipeline.parameters.machine_image >>
     working_directory: ~/project/jupyter-extension
     steps:
       - checkout:
@@ -1012,8 +1012,7 @@ jobs:
           path: ~/project
       - attach_workspace:
           at: .
-      - setup_remote_docker:
-          version: 19.03.13
+      - setup_remote_docker
       - run:
           name: docker login
           command: echo "$DOCKER_PWD" | docker login --username pachydermbuildbot --password-stdin
@@ -1030,8 +1029,7 @@ jobs:
     steps:
       - checkout:
           path: ~/project
-      - setup_remote_docker:
-          version: 19.03.13
+      - setup_remote_docker
       - run:
           name: docker login
           command: echo "$DOCKER_PWD" | docker login --username pachydermbuildbot --password-stdin
@@ -1308,7 +1306,6 @@ jobs:
       - checkout
       - setup_remote_docker:
           docker_layer_caching: true
-          version: "20.10.12"
       - run:
           name: pachydermbuildbot docker login
           command: |
@@ -1343,8 +1340,7 @@ jobs:
     steps:
       - checkout:
           path: ~/project
-      - setup_remote_docker:
-          version: 19.03.13
+      - setup_remote_docker
       - install-poetry
       - run:
           name: build
@@ -1361,8 +1357,7 @@ jobs:
           path: ~/project
       - attach_workspace:
           at: .
-      - setup_remote_docker:
-          version: 20.10.18
+      - setup_remote_docker
       - run:
           name: docker login
           command: echo "$DOCKER_PWD" | docker login --username pachydermbuildbot --password-stdin
@@ -1375,7 +1370,7 @@ jobs:
   test-python-sdk:
     resource_class: xlarge
     machine:
-      image: ubuntu-2004:202107-02
+      image: << pipeline.parameters.machine_image >>
     working_directory: ~/project/python-sdk
     steps:
       - checkout:
@@ -1484,7 +1479,6 @@ jobs:
     executor: python
     steps:
       - setup_remote_docker:
-          version: 20.10.18
           docker_layer_caching: true
       - run:
           name: docker login
@@ -1561,23 +1555,12 @@ jobs:
       - image: << pipeline.parameters.ci_runner_image >>
     steps:
       - checkout
-      - run: bazel run --config=remotecache --remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY} //:make_proto
-      - run: git checkout MODULE.bazel.lock # For OSX-only changes.
-      - run:
-          name: Check that you ran make proto
-          command: |
-            echo "If you see diffs here, it means that you forgot to run `bazel run //:make_proto`"
-            git diff --exit-code
       - run:
           name: Check that you ran gazelle
           command: |
             echo "If you see an error here, it means you forgot to `bazel run //:gazelle`"
             bazel run --config=remotecache --remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY} //:gazelle --  -mode=diff
-      - run:
-          name: Check that you ran buildifier
-          command: |
-            echo "If you see an error here, it means you forgot to `bazel run //:buildifier`"
-            bazel test --config=remotecache --remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY} //:buildifier_test
+      - run: bazel test --config=remotecache --remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY} //:style_tests
       - run:
           command: cp -a bazel-testlogs/ /tmp/bazel-testlogs # store_test_results can't handle bazel-testlogs being a symlink
           when: always
