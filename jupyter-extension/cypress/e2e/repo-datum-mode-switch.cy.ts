@@ -4,7 +4,7 @@ describe('switching between repo and datum mode', () => {
     cy.isAppReady();
     cy.unmountAllRepos();
     cy.openMountPlugin();
-    cy.findAllByText('Load');
+    cy.findByTestId('ProjectRepo-DropdownCombobox-li-default/images');
     cy.wait(3000);
   });
 
