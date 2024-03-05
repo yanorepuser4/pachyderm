@@ -377,6 +377,59 @@ determined:
   # defaultAuxResourcePool: default
   # defaultComputeResourcePool: default
 
+  ## Configure GenAI Deployment
+  genai:
+    ## Version of GenAI to use. If unset, GenAI will not be deployed
+    version: 0.1.1
+
+    ## Port for GenAI to use
+    port: 9011
+
+    messageQueuePort: 9013
+
+    ## Secret to pull the GenAI image
+    imagePullSecretName: hpedocker
+
+    ## GenAI pod memory request
+    memRequest: 1Gi
+
+    ## GenAI pod cpu request
+    cpuRequest: 1
+
+    ## GenAI pod memory limit
+    # memLimit: 1Gi
+
+    ## GenAI pod cpu limit
+    # cpuLimit: 2
+
+    ## PVC Name for the shared file system for GenAI.
+    ## Note: Either `sharedPVCName` or `generatedPVC.storageSize` (to
+    ## generate a new PVC) is required for GenAI deployment
+    # sharedPVCName:
+
+    ## Spec for the generated PVC for GenAI
+    ## Note: In order to generate a shared PVC, you will need access to a
+    ## StorageClass that can provide a ReadWriteMany volume
+    generatedPVC:
+      ## Storage class name for the generated PVC
+      storageClassName: gp3
+
+      ## Size of the generated PVC
+      storageSize: 100Gi
+
+    ## Extra Resource Pool Metadata is hardcoded information about the
+    ## GPUs available to the resource pools. This information
+    ## is not provided in k8s so we provide it directly.
+    ## Note: All resource pools defined here need to also be reflected in
+    ## the .Values.resourcePools.
+    extra_resource_pool_metadata:
+      gpu-pool:
+        gpu_type: A100
+        max_agents: 1
+    #   v100:
+    #     gpu_type: V100
+    #     max_agents: 2
+
 console:
   # enabled controls whether the console manifests are created or not.
   enabled: true

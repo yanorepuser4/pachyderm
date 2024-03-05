@@ -236,7 +236,16 @@ class ConfigHandler(BaseHandler):
     async def put(self):
         try:
             body = self.get_json_body()
-            response = await self.mount_client.config(body)
+            address = body["pachd_address"]
+            cas = bytes(body["server_cas"], "utf-8") if "server_cas" in body else None
+
+            client = Client().from_pachd_address(pachd_address=address, root_certs=cas)
+            self.settings["pachyderm_client"] = client
+            self.settings["pfs_contents_manager"] = PFSManager(client=client)
+            self.settings["datum_contents_manager"] = DatumManager(client=client)
+            self.settings["pachyderm_pps_client"] = PPSClient(client=client)
+
+            response = self.config_response()
             self.finish(response)
             # reload pps client with new config
             self.settings["pachyderm_pps_client"] = PPSClient()
@@ -336,11 +345,36 @@ class PPSCreateHandler(BaseHandler):
             raise e
 
 def setup_handlers(web_app):
-    get_logger().info(f"Using PFS_MOUNT_DIR={PFS_MOUNT_DIR}")
-    get_logger().info(f"Using PFS_SOCK_PATH={PFS_SOCK_PATH}")
-    web_app.settings["pfs_contents_manager"] = PFSContentsManager(PFS_MOUNT_DIR)
-    web_app.settings["pachyderm_mount_client"] = MountServerClient(PFS_MOUNT_DIR, PFS_SOCK_PATH)
-    web_app.settings["pachyderm_pps_client"] = PPSClient()
+    """
+    Sets up the Pachyderm client and the HTTP request handler.
+
+    Config for the Pachyderm client will first be attempted by reading
+    the local config file. This falls back to the PACHD_ADDRESS and
+    DEX_TOKEN env vars, and finally defaulting to a localhost client
+    on the default port 30650 failing that.
+    """
+    try:
+        client = Client().from_config()
+        get_logger().debug(
+            f"Created Pachyderm client for {client.address} from local config"
+        )
+    except FileNotFoundError:
+        if PACHD_ADDRESS:
+            client = Client().from_pachd_address(pachd_address=PACHD_ADDRESS)
+            if DEX_TOKEN:
+                client.auth_token = client.auth.authenticate(
+                    id_token=DEX_TOKEN
+                ).pach_token
+        else:
+            client = Client()
+            get_logger().debug(
+                "Could not find config file, creating localhost Pachyderm client"
+            )
+
+    web_app.settings["pachyderm_client"] = client
+    web_app.settings["pachyderm_pps_client"] = PPSClient(client=client)
+    web_app.settings["pfs_contents_manager"] = PFSManager(client=client)
+    web_app.settings["datum_contents_manager"] = DatumManager(client=client)
 
     _handlers = [
         ("/repos", ReposHandler),
