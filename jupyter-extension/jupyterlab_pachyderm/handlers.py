@@ -459,14 +459,13 @@ def setup_handlers(web_app):
         get_logger().debug(
             f"Created Pachyderm client for {client.address} from local config"
         )
-    except Exception as e:
+    except FileNotFoundError:
         if PACHD_ADDRESS:
             client = Client().from_pachd_address(pachd_address=PACHD_ADDRESS, auth_token=DEX_TOKEN)
-            print(e)
         else:
             client = Client()
             get_logger().debug(
-                print(f"Created Pachyderm client for {client.address} from env vars")
+                "Could not find config file, creating localhost Pachyderm client"
             )
 
     web_app.settings["pachyderm_client"] = client
