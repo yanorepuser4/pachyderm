@@ -1,34 +1,31 @@
-/* TODO Change px to em */
-
 .pachyderm-DropdownCombobox {
-  display: flex;
-  flex-direction: column;
   width: 100%;
-  justify-content: center;
   margin-top: 0;
-  align-self: center;
   padding-top: 1em;
-}
-
-.pachyderm-DropdownCombobox > label {
-  font-weight: bolder;
+  position: relative;
+  display: inline-block;
 }
 
 .pachyderm-DropdownCombobox > div, ul {
-  margin-left: 12px;
-  margin-right: 12px;
+  margin: 0 0.85em 0 0.85em;
+  padding: 0;
 }
 
 .pachyderm-DropdownCombobox > ul {
+  width: 97%;
   list-style: none;
-  width: 100%;
-  padding: 0;
-  margin: 0;
-  z-index: 1;
+  z-index: 3;
+  position: absolute;
+  background-color: white;
+  box-shadow: 0 0.5em 1em 0 rgba(0,0,0,0.2);
 }
 
 .pachyderm-DropdownCombobox > ul > li {
-  padding: 4px;
-  margin-left: 12px;
-  margin-right: 12px;
+  padding: 0.29em;
+  margin-left: 0.85em;
+  margin-right: 0.85em;
+}
+
+.p-Widget {
+  overflow: visible;
 }

@@ -12,7 +12,7 @@ type ExploreProps = {
 };
 
 const Explore: React.FC<ExploreProps> = ({mounted, unmounted, updateData}) => {
-  // TODO: initial loading...... Maybe show some text? Also this probably fixes the login issue
+  // Avoids rendering the dropdowns until mount information is loaded.
   if (mounted.length === 0 && unmounted.length === 0) {
     return <></>;
   }

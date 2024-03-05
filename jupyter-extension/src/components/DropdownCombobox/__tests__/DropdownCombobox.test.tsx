@@ -128,12 +128,3 @@ describe('DropdownCombobox', () => {
     expect(liBar).toHaveStyle('background-color: bde4ff');
   });
 });
-
-// # TODO: DropdownComponent tests
-// TODO: consider keyboard navigation tets?
-// # TODO DropdownComponent
-// TODO: Show the five most recents first potentially with a separator
-// TODO: Post about this in #nbredesign channel. Potentially
-// # TODO Explore
-// TODO: Figure out why after login the components are stale? Maybe unmount the mount?
-// TODO: Change mount to only unmount/remount if the branch changes

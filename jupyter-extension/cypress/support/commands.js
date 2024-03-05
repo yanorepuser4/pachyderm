@@ -27,7 +27,6 @@ import '@testing-library/cypress/add-commands';
 // Cypress.Commands.overwrite('visit', (originalFn, url, options) => { ... })
 Cypress.Commands.add('resetApp', () => {
   cy.request('PUT', 'http://localhost:8888/pachyderm/v2/_unmount_all');
-  // TODO: Do I need to await this?
   cy.visit('?reset');
 });
 
