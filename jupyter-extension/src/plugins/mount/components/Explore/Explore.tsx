@@ -29,12 +29,8 @@ const Explore: React.FC<ExploreProps> = ({mounted, unmounted, updateData}) => {
     return <></>;
   }
 
-  const {
-    projectRepos,
-    selectedProjectRepo,
-    branches,
-    selectedBranch,
-  } = getMountedStatus(mounted, unmounted);
+  const {projectRepos, selectedProjectRepo, branches, selectedBranch} =
+    getMountedStatus(mounted, unmounted);
 
   return (
     <div className="pachyderm-explore-view">
@@ -148,7 +144,9 @@ const getMountedStatus = (
       projectRepos.push(selectedProjectRepo);
       projectRepoToBranches[selectedProjectRepo] = [];
     }
-    if (!projectRepoToBranches[selectedProjectRepo].includes(mountedBranch.branch)) {
+    if (
+      !projectRepoToBranches[selectedProjectRepo].includes(mountedBranch.branch)
+    ) {
       projectRepoToBranches[selectedProjectRepo].push(mountedBranch.branch);
     }
     branches = projectRepoToBranches[selectedProjectRepo];
