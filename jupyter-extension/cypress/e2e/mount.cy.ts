@@ -2,9 +2,7 @@ describe('mount', () => {
   beforeEach(() => {
     cy.resetApp();
     cy.isAppReady();
-    cy.unmountAllRepos();
     cy.openMountPlugin();
-    cy.findByTestId('ProjectRepo-DropdownCombobox-li-default/images');
   });
 
   it('should mount pachyderm repo', () => {
@@ -28,6 +26,7 @@ describe('mount', () => {
 
   it("should correctly mount a repo's branch", () => {
     cy.findByTestId('ProjectRepo-DropdownCombobox-li-default/images').click();
+    cy.wait(1000);
     cy.findByTestId('Branch-DropdownCombobox-input').click();
     cy.findByTestId('Branch-DropdownCombobox-li-branch').click();
     cy.get('#jupyterlab-pachyderm-browser-pfs')

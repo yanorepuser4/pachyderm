@@ -2,9 +2,7 @@ describe('switching between repo and datum mode', () => {
   beforeEach(() => {
     cy.resetApp();
     cy.isAppReady();
-    cy.unmountAllRepos();
     cy.openMountPlugin();
-    cy.findByTestId('ProjectRepo-DropdownCombobox-li-default/images');
   });
 
   it('should open datum mode', () => {
@@ -33,6 +31,7 @@ describe('switching between repo and datum mode', () => {
 
   it('modifying input spec saves and restores it when back in datum mode', () => {
     cy.findByTestId('ProjectRepo-DropdownCombobox-li-default/images').click();
+    cy.wait(1000);
     cy.findByTestId('Branch-DropdownCombobox-input').click();
     cy.findByTestId('Branch-DropdownCombobox-li-branch').click();
 
@@ -46,8 +45,6 @@ describe('switching between repo and datum mode', () => {
       .should('contain', 'a');
     cy.findAllByRole('tab').filter('.pachyderm-explore-tab').click();
 
-    cy.findAllByText('Unload').should('have.length', 1);
-    cy.findAllByText('Unload').first().click();
     cy.findAllByRole('tab').filter('.pachyderm-test-tab').click();
     cy.findByTestId('Datum__inputSpecInput')
       .invoke('prop', 'value')

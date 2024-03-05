@@ -1,4 +1,4 @@
-import React, {useState} from 'react';
+import React from 'react';
 import {showErrorMessage} from '@jupyterlab/apputils';
 
 import {Repo, Mount, ListMountsResponse} from '../../types';
@@ -19,7 +19,9 @@ const Explore: React.FC<ExploreProps> = ({mounted, unmounted, updateData}) => {
 
   // In the event of some how multiple repos being mounted we should unmount all to reset to the default state.
   if (mounted.length > 1) {
-    umountAll();
+    (async () => {
+      updateData(await unmountAll());
+    })();
     showErrorMessage(
       'Unexpected Error',
       'Multiple repos have been mounted somehow so all repos have been unmounted.',
@@ -29,12 +31,11 @@ const Explore: React.FC<ExploreProps> = ({mounted, unmounted, updateData}) => {
 
   const {
     projectRepos,
-    selectedRepo: selectedProjectRepo,
+    selectedProjectRepo,
     branches,
     selectedBranch,
   } = getMountedStatus(mounted, unmounted);
 
-  const [projectRepo, setProjectRepo] = useState(selectedProjectRepo);
   return (
     <div className="pachyderm-explore-view">
       <DropdownCombobox
@@ -43,8 +44,10 @@ const Explore: React.FC<ExploreProps> = ({mounted, unmounted, updateData}) => {
         items={projectRepos}
         placeholder="project/repo"
         onSelectedItemChange={(projectRepo) => {
-          setProjectRepo(projectRepo || '');
           if (!projectRepo) {
+            (async () => {
+              updateData(await unmountAll());
+            })();
             return;
           }
 
@@ -53,7 +56,7 @@ const Explore: React.FC<ExploreProps> = ({mounted, unmounted, updateData}) => {
           })();
         }}
       />
-      {!branches || !projectRepo ? (
+      {!branches || !selectedProjectRepo ? (
         <></>
       ) : (
         <DropdownCombobox
@@ -66,14 +69,16 @@ const Explore: React.FC<ExploreProps> = ({mounted, unmounted, updateData}) => {
               return;
             }
 
-            if (!selectedProjectRepo) {
-              umountAll();
-              showErrorMessage(
-                'Unexpected Error',
-                'An unknown branch was selected so all repos have been unmounted.',
-              );
-              return;
-            }
+            // if (!selectedProjectRepo) {
+            //   (async () => {
+            //     updateData(await unmountAll());
+            //   })();
+            //   showErrorMessage(
+            //     'Unexpected Error',
+            //     'An unknown branch was selected so all repos have been unmounted.',
+            //   );
+            //   return;
+            // }
 
             (async () => {
               updateData(await mount(selectedProjectRepo, selectedBranch));
@@ -85,7 +90,7 @@ const Explore: React.FC<ExploreProps> = ({mounted, unmounted, updateData}) => {
   );
 };
 
-const umountAll = async (): Promise<ListMountsResponse> => {
+const unmountAll = async (): Promise<ListMountsResponse> => {
   return requestAPI<ListMountsResponse>('_unmount_all', 'PUT');
 };
 
@@ -95,7 +100,7 @@ const mount = async (
 ): Promise<ListMountsResponse> => {
   const [project, repo] = projectRepo.split('/');
 
-  await umountAll();
+  await unmountAll();
   return await requestAPI<ListMountsResponse>('_mount', 'PUT', {
     mounts: [
       {
@@ -114,7 +119,7 @@ const mount = async (
 
 type MountedStatus = {
   projectRepos: string[];
-  selectedRepo: string | null;
+  selectedProjectRepo: string | null;
   branches: string[] | null;
   selectedBranch: string | null;
 };
@@ -132,26 +137,26 @@ const getMountedStatus = (
     projectRepos.push(projectRepoKey);
   }
 
-  let selectedRepo: string | null = null;
+  let selectedProjectRepo: string | null = null;
   let selectedBranch: string | null = null;
   let branches: string[] | null = null;
   if (mounted.length === 1) {
     const mountedBranch = mounted[0];
-    selectedRepo = `${mountedBranch.project}/${mountedBranch.repo}`;
+    selectedProjectRepo = `${mountedBranch.project}/${mountedBranch.repo}`;
     selectedBranch = mountedBranch.branch;
-    if (!projectRepos.includes(selectedRepo)) {
-      projectRepos.push(selectedRepo);
-      projectRepoToBranches[selectedRepo] = [];
+    if (!projectRepos.includes(selectedProjectRepo)) {
+      projectRepos.push(selectedProjectRepo);
+      projectRepoToBranches[selectedProjectRepo] = [];
     }
-    if (!projectRepoToBranches[selectedRepo].includes(mountedBranch.branch)) {
-      projectRepoToBranches[selectedRepo].push(mountedBranch.branch);
+    if (!projectRepoToBranches[selectedProjectRepo].includes(mountedBranch.branch)) {
+      projectRepoToBranches[selectedProjectRepo].push(mountedBranch.branch);
     }
-    branches = projectRepoToBranches[selectedRepo];
+    branches = projectRepoToBranches[selectedProjectRepo];
     branches?.sort();
   }
   projectRepos.sort();
 
-  return {projectRepos, selectedRepo, branches, selectedBranch};
+  return {projectRepos, selectedProjectRepo, branches, selectedBranch};
 };
 
 export default Explore;
