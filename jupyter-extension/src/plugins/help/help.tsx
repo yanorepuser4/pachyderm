@@ -2,7 +2,7 @@ import React from 'react';
 import {JupyterFrontEnd} from '@jupyterlab/application';
 import {IMainMenu} from '@jupyterlab/mainmenu';
 import {Dialog, showDialog} from '@jupyterlab/apputils';
-import {PachydermLogo} from '../../utils/components/Svgs';
+import {PachydermLogo} from '../../components/Svgs';
 
 namespace CommandIDs {
   export const openDocs = 'jupyterlab-pachyderm:open-docs';

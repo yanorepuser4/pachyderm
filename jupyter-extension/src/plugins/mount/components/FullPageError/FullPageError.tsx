@@ -1,5 +1,5 @@
 import React from 'react';
-import {GenericError, StatusWarning} from '../../../../utils/components/Svgs';
+import {GenericError, StatusWarning} from '../../../../components/Svgs';
 import {HealthCheck} from 'plugins/mount/types';
 
 type FullPageErrorProps = {

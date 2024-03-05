@@ -3,7 +3,7 @@ import {URLExt} from '@jupyterlab/coreutils';
 import {ILauncher} from '@jupyterlab/launcher';
 import {ServerConnection} from '@jupyterlab/services';
 
-import {fileIcon} from '../../utils/icons';
+import {fileIcon} from '../../components/Svgs/Icons';
 const EXAMPLES_CATAGORY = 'Pachyderm Examples';
 
 export type ExampleItem = {

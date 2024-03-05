@@ -14,7 +14,7 @@ import {settingsIcon} from '@jupyterlab/ui-components';
 import {Signal} from '@lumino/signaling';
 import {SplitPanel, TabPanel, Widget} from '@lumino/widgets';
 
-import {mountLogoIcon} from '../../utils/icons';
+import {mountLogoIcon} from '../../components/Svgs/Icons';
 import {PollMounts} from './pollMounts';
 import createCustomFileBrowser from './customFileBrowser';
 import {
@@ -33,7 +33,7 @@ import Config from './components/Config/Config';
 import Datum from './components/Datum/Datum';
 import Explore from './components/Explore/Explore';
 import Pipeline from './components/Pipeline/Pipeline';
-import LoadingDots from '../../utils/components/LoadingDots/LoadingDots';
+import LoadingDots from '../../components/LoadingDots/LoadingDots';
 import FullPageError from './components/FullPageError/FullPageError';
 import {requestAPI} from '../../handler';
 

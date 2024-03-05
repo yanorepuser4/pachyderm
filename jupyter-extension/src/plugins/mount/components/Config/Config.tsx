@@ -1,11 +1,11 @@
 import React from 'react';
 import {AuthConfig, HealthCheck} from 'plugins/mount/types';
 import {useConfig} from './hooks/useConfig';
-import {infoIcon} from '../../../../utils/icons';
+import {infoIcon} from '../../../../components/Svgs/Icons';
 
 import {closeIcon} from '@jupyterlab/ui-components';
-import LoadingDots from '../../../../utils/components/LoadingDots/LoadingDots';
-import {KubernetesElephant} from '../../../../utils/components/Svgs';
+import LoadingDots from '../../../../components/LoadingDots/LoadingDots';
+import {KubernetesElephant} from '../../../../components/Svgs';
 
 type ConfigProps = {
   updateConfig: (shouldShow: AuthConfig) => void;
