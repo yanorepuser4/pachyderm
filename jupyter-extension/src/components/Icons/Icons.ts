@@ -1,9 +1,9 @@
 import {LabIcon} from '@jupyterlab/ui-components';
 
-import fileSvg from '../../style/icons/file.svg';
-import mountLogoSvg from '../../style/icons/mount-logo.svg';
-import repoSvg from '../../style/icons/repo.svg';
-import infoSvg from '../../style/icons/info.svg';
+import fileSvg from './file.svg';
+import mountLogoSvg from './mount-logo.svg';
+import repoSvg from './repo.svg';
+import infoSvg from './info.svg';
 
 export const fileIcon = new LabIcon({
   name: 'jupyterlab-pachyderm:file',

@@ -14,7 +14,7 @@ import {settingsIcon} from '@jupyterlab/ui-components';
 import {Signal} from '@lumino/signaling';
 import {SplitPanel, TabPanel, Widget} from '@lumino/widgets';
 
-import {mountLogoIcon} from '../../components/Svgs/Icons';
+import {mountLogoIcon} from '../../components/Icons/Icons';
 import {PollMounts} from './pollMounts';
 import createCustomFileBrowser from './customFileBrowser';
 import {

@@ -1,7 +1,7 @@
 import React from 'react';
 import {AuthConfig, HealthCheck} from 'plugins/mount/types';
 import {useConfig} from './hooks/useConfig';
-import {infoIcon} from '../../../../components/Svgs/Icons';
+import {infoIcon} from '../../../../components/Icons/Icons';
 
 import {closeIcon} from '@jupyterlab/ui-components';
 import LoadingDots from '../../../../components/LoadingDots/LoadingDots';
