@@ -5,7 +5,6 @@ describe('mount', () => {
     cy.unmountAllRepos();
     cy.openMountPlugin();
     cy.findByTestId('ProjectRepo-DropdownCombobox-li-default/images');
-    cy.wait(3000);
   });
 
   it('should mount pachyderm repo', () => {

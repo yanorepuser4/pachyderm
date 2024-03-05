@@ -54,6 +54,9 @@ Cypress.Commands.add('openMountPlugin', () => {
 
 Cypress.Commands.add('unmountAllRepos', (command) => {
   cy.request('PUT', 'http://localhost:8888/pachyderm/v2/_unmount_all');
+
+  // It's important to wait briefly after unmounting so that next refresh of the page has the correct state.
+  cy.wait(1000);
 });
 
 //Taken from galata
