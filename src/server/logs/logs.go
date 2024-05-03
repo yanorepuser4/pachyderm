@@ -62,6 +62,7 @@ func (ls LogService) GetLogs(ctx context.Context, request *logs.GetLogsRequest, 
 		request = &logs.GetLogsRequest{}
 	}
 
+	var changedTime bool
 	filter := request.Filter
 	if filter == nil {
 		filter = new(logs.LogFilter)
@@ -77,10 +78,13 @@ func (ls LogService) GetLogs(ctx context.Context, request *logs.GetLogsRequest, 
 			From:  timestamppb.New(now.Add(-700 * time.Hour)),
 			Until: timestamppb.New(now),
 		}
+		changedTime = true
 	case filter.TimeRange.From == nil || filter.TimeRange.From.AsTime().IsZero():
 		filter.TimeRange.From = timestamppb.New(filter.TimeRange.Until.AsTime().Add(-700 * time.Hour))
+		changedTime = true
 	case filter.TimeRange.Until == nil || filter.TimeRange.Until.AsTime().IsZero():
 		filter.TimeRange.Until = timestamppb.New(filter.TimeRange.From.AsTime().Add(700 * time.Hour))
+		changedTime = true
 	}
 
 	c, err := ls.GetLokiClient()
@@ -95,6 +99,10 @@ func (ls LogService) GetLogs(ctx context.Context, request *logs.GetLogsRequest, 
 	if start.After(end) {
 		direction = backwardLogDirection
 		start, end = end, start
+		changedTime = true
+	}
+	if changedTime {
+		log.Debug(ctx, "changed loki query time range", log.Proto("range", filter.GetTimeRange()))
 	}
 
 	var (
@@ -105,6 +113,7 @@ func (ls LogService) GetLogs(ctx context.Context, request *logs.GetLogsRequest, 
 	if err != nil {
 		return errors.Wrap(err, "cannot convert request to LogQL")
 	}
+
 	if err = doQuery(ctx, c, logQL, int(filter.Limit), start, end, uint(filter.TimeRange.Offset), direction, adapter.publish); err != nil {
 		var invalidBatchSizeErr ErrInvalidBatchSize
 		switch {

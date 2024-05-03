@@ -3,6 +3,7 @@ package logs_test
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"io/fs"
 	"net/http"
@@ -14,6 +15,8 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
+	"github.com/itchyny/gojq"
 	"github.com/pachyderm/pachyderm/v2/src/logs"
 	logservice "github.com/pachyderm/pachyderm/v2/src/server/logs"
 	"google.golang.org/protobuf/encoding/protojson"
@@ -741,11 +744,73 @@ func TestGetLogs_offset(t *testing.T) {
 	}
 }
 
+var onlyCompareObject = protocmp.FilterMessage(new(logs.GetLogsResponse), cmpopts.AcyclicTransformer("onlyCompareObject", func(msg any) any {
+	x := msg.(protocmp.Message)
+	resp := x.Unwrap().(*logs.GetLogsResponse)
+	if obj := resp.GetLog().GetObject(); obj != nil {
+		return &logs.GetLogsResponse{
+			ResponseType: &logs.GetLogsResponse_Log{
+				Log: &logs.LogMessage{
+					Object: obj,
+				},
+			},
+		}
+	}
+	return x
+}))
+
+func jqObject(program string) cmp.Option {
+	q, err := gojq.Parse(program)
+	if err != nil {
+		panic(fmt.Sprintf("parse jq program %q: %v", program, err))
+	}
+	jq, err := gojq.Compile(q)
+	if err != nil {
+		panic(fmt.Sprintf("compile jq program %q: %v", program, err))
+	}
+	return protocmp.FilterMessage(new(structpb.Struct), cmp.Transformer("jq", func(x any) any {
+		s := x.(protocmp.Message).Unwrap().(*structpb.Struct)
+		iter := jq.Run(s.AsMap())
+		if result, ok := iter.Next(); ok {
+			switch x := result.(type) {
+			case map[string]any:
+				rs, err := structpb.NewStruct(x)
+				if err != nil {
+					panic(fmt.Sprintf("NewStruct(%v): %v", x, err))
+				}
+				return rs
+			default:
+				panic(fmt.Sprintf("jq program produced invalid output type: %#v; want map[string]any", result))
+			}
+		}
+		panic("jq program failed to produce output")
+	}))
+}
+
+func jsonLog(x map[string]any) *logs.GetLogsResponse {
+	js, err := json.Marshal(x)
+	if err != nil {
+		panic(fmt.Sprintf("marshal %v to json: %v", x, err))
+	}
+	s := new(structpb.Struct)
+	if err := protojson.Unmarshal(js, s); err != nil {
+		panic(fmt.Sprintf("unmarshal %v json into google.protobuf.Struct: %v", x, err))
+	}
+	return &logs.GetLogsResponse{
+		ResponseType: &logs.GetLogsResponse_Log{
+			Log: &logs.LogMessage{
+				Object: s,
+			},
+		},
+	}
+}
+
 func TestWithRealLogs(t *testing.T) {
 	testData := []struct {
 		name  string
 		query *logs.GetLogsRequest
 		want  []*logs.GetLogsResponse
+		opts  []cmp.Option
 	}{
 		{
 			name: "edges logs",
@@ -817,6 +882,39 @@ func TestWithRealLogs(t *testing.T) {
 				},
 			}},
 		},
+		{
+			name: "simple logs mid-stream",
+			query: &logs.GetLogsRequest{
+				Query: &logs.LogQuery{
+					QueryType: &logs.LogQuery_Admin{
+						Admin: &logs.AdminLogQuery{
+							AdminType: &logs.AdminLogQuery_App{
+								App: "simple",
+							},
+						},
+					},
+				},
+				Filter: &logs.LogFilter{
+					TimeRange: &logs.TimeRangeLogFilter{
+						From: timestamppb.New(time.Date(2024, 5, 1, 0, 0, 0, 970, time.UTC)),
+					},
+					Limit: 10,
+				},
+			},
+			opts: []cmp.Option{onlyCompareObject, jqObject("{message}")},
+			want: []*logs.GetLogsResponse{
+				jsonLog(map[string]any{"message": "970"}),
+				jsonLog(map[string]any{"message": "971"}),
+				jsonLog(map[string]any{"message": "972"}),
+				jsonLog(map[string]any{"message": "973"}),
+				jsonLog(map[string]any{"message": "974"}),
+				jsonLog(map[string]any{"message": "975"}),
+				jsonLog(map[string]any{"message": "976"}),
+				jsonLog(map[string]any{"message": "977"}),
+				jsonLog(map[string]any{"message": "978"}),
+				jsonLog(map[string]any{"message": "979"}),
+			},
+		},
 	}
 	ctx := pctx.TestContext(t)
 	l, err := testloki.New(ctx, t.TempDir())
@@ -860,7 +958,9 @@ func TestWithRealLogs(t *testing.T) {
 			if err := ls.GetLogs(ctx, test.query, p); err != nil {
 				t.Fatalf("GetLogs: %v", err)
 			}
-			require.NoDiff(t, test.want, p.responses, []cmp.Option{protocmp.Transform()})
+			opts := []cmp.Option{protocmp.Transform()}
+			opts = append(opts, test.opts...)
+			require.NoDiff(t, test.want, p.responses, opts)
 		})
 	}
 }
