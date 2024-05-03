@@ -3,13 +3,13 @@ package logs_test
 import (
 	"context"
 	"encoding/base64"
-	"encoding/json"
 	"fmt"
 	"io/fs"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -19,7 +19,9 @@ import (
 	"github.com/itchyny/gojq"
 	"github.com/pachyderm/pachyderm/v2/src/logs"
 	logservice "github.com/pachyderm/pachyderm/v2/src/server/logs"
+	"go.uber.org/zap"
 	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/testing/protocmp"
 	"google.golang.org/protobuf/types/known/structpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -27,6 +29,7 @@ import (
 	"github.com/pachyderm/pachyderm/v2/src/pps"
 
 	"github.com/pachyderm/pachyderm/v2/src/internal/errors"
+	"github.com/pachyderm/pachyderm/v2/src/internal/log"
 	"github.com/pachyderm/pachyderm/v2/src/internal/lokiutil"
 	loki "github.com/pachyderm/pachyderm/v2/src/internal/lokiutil/client"
 	"github.com/pachyderm/pachyderm/v2/src/internal/lokiutil/testloki"
@@ -744,21 +747,42 @@ func TestGetLogs_offset(t *testing.T) {
 	}
 }
 
-var onlyCompareObject = protocmp.FilterMessage(new(logs.GetLogsResponse), cmpopts.AcyclicTransformer("onlyCompareObject", func(msg any) any {
-	x := msg.(protocmp.Message)
-	resp := x.Unwrap().(*logs.GetLogsResponse)
-	if obj := resp.GetLog().GetObject(); obj != nil {
-		return &logs.GetLogsResponse{
-			ResponseType: &logs.GetLogsResponse_Log{
-				Log: &logs.LogMessage{
-					Object: obj,
-				},
-			},
-		}
-	}
-	return x
-}))
+func transformProto[T proto.Message](name string, filter func(T) T) cmp.Option {
+	return protocmp.FilterMessage(*new(T), cmpopts.AcyclicTransformer(name, func(in any) any {
+		x := in.(protocmp.Message).Unwrap().(T)
+		return filter(x)
+	}))
+}
 
+// onlyCompareObject ignores all fields on logs.LogMessage except "object".
+var onlyCompareObject = transformProto("onlyCompareObject", func(lm *logs.LogMessage) *logs.LogMessage {
+	return &logs.LogMessage{
+		Object: lm.GetObject(),
+	}
+})
+
+// onlyTimeRangeInPagingHint ignores all fields on a paging hint that aren't related to time ranges.
+var onlyTimeRangeInPagingHint = transformProto("onlyTimeRangeInPagingHint", func(ph *logs.PagingHint) *logs.PagingHint {
+	return &logs.PagingHint{
+		Older: &logs.GetLogsRequest{
+			Filter: &logs.LogFilter{
+				TimeRange: ph.GetOlder().GetFilter().GetTimeRange(),
+			},
+		},
+		Newer: &logs.GetLogsRequest{
+			Filter: &logs.LogFilter{
+				TimeRange: ph.GetNewer().GetFilter().GetTimeRange(),
+			},
+		},
+	}
+})
+
+var sortByNativeTimestamp = cmpopts.SortSlices(func(x, y *logs.GetLogsResponse) bool {
+	return x.GetLog().GetNativeTimestamp().AsTime().Before(y.GetLog().GetNativeTimestamp().AsTime())
+})
+
+// jqObject runs the provided JQ program on all structpb.Struct objects (useful for transforming
+// GetLogsResponse.Log.Object).
 func jqObject(program string) cmp.Option {
 	q, err := gojq.Parse(program)
 	if err != nil {
@@ -768,8 +792,7 @@ func jqObject(program string) cmp.Option {
 	if err != nil {
 		panic(fmt.Sprintf("compile jq program %q: %v", program, err))
 	}
-	return protocmp.FilterMessage(new(structpb.Struct), cmp.Transformer("jq", func(x any) any {
-		s := x.(protocmp.Message).Unwrap().(*structpb.Struct)
+	return transformProto("jqObject", func(s *structpb.Struct) *structpb.Struct {
 		iter := jq.Run(s.AsMap())
 		if result, ok := iter.Next(); ok {
 			switch x := result.(type) {
@@ -784,16 +807,24 @@ func jqObject(program string) cmp.Option {
 			}
 		}
 		panic("jq program failed to produce output")
-	}))
+
+	})
 }
 
-func jsonLog(x map[string]any) *logs.GetLogsResponse {
-	js, err := json.Marshal(x)
-	if err != nil {
-		panic(fmt.Sprintf("marshal %v to json: %v", x, err))
+// prettyTimes translates timestamps to RFC3339Nano strings.
+var prettyTimes = protocmp.FilterMessage(new(timestamppb.Timestamp), cmpopts.AcyclicTransformer("prettyTimes", func(in any) any {
+	x := in.(protocmp.Message).Unwrap().(*timestamppb.Timestamp)
+	if x == nil {
+		return "<nil>"
 	}
-	s := new(structpb.Struct)
-	if err := protojson.Unmarshal(js, s); err != nil {
+	return x.AsTime().Format(time.RFC3339Nano)
+}))
+
+// jsonLog creates a new JSON log message suitable for comparison with a real log via
+// onlyCompareObject.
+func jsonLog(x map[string]any) *logs.GetLogsResponse {
+	s, err := structpb.NewStruct(x)
+	if err != nil {
 		panic(fmt.Sprintf("unmarshal %v json into google.protobuf.Struct: %v", x, err))
 	}
 	return &logs.GetLogsResponse{
@@ -900,8 +931,9 @@ func TestWithRealLogs(t *testing.T) {
 					},
 					Limit: 10,
 				},
+				WantPagingHint: true,
 			},
-			opts: []cmp.Option{onlyCompareObject, jqObject("{message}")},
+			opts: []cmp.Option{onlyCompareObject, jqObject("{message}"), onlyTimeRangeInPagingHint},
 			want: []*logs.GetLogsResponse{
 				jsonLog(map[string]any{"message": "970"}),
 				jsonLog(map[string]any{"message": "971"}),
@@ -913,6 +945,26 @@ func TestWithRealLogs(t *testing.T) {
 				jsonLog(map[string]any{"message": "977"}),
 				jsonLog(map[string]any{"message": "978"}),
 				jsonLog(map[string]any{"message": "979"}),
+				{
+					ResponseType: &logs.GetLogsResponse_PagingHint{
+						PagingHint: &logs.PagingHint{
+							Older: &logs.GetLogsRequest{
+								Filter: &logs.LogFilter{
+									TimeRange: &logs.TimeRangeLogFilter{
+										Until: timestamppb.New(time.Date(2024, 5, 1, 0, 0, 0, 970, time.UTC)),
+									},
+								},
+							},
+							Newer: &logs.GetLogsRequest{
+								Filter: &logs.LogFilter{
+									TimeRange: &logs.TimeRangeLogFilter{
+										From: timestamppb.New(time.Date(2024, 5, 1, 0, 0, 0, 980, time.UTC)),
+									},
+								},
+							},
+						},
+					},
+				},
 			},
 		},
 	}
@@ -950,7 +1002,6 @@ func TestWithRealLogs(t *testing.T) {
 			return l.Client, nil
 		},
 	}
-
 	for _, test := range testData {
 		t.Run(test.name, func(t *testing.T) {
 			ctx := pctx.TestContext(t)
@@ -958,9 +1009,112 @@ func TestWithRealLogs(t *testing.T) {
 			if err := ls.GetLogs(ctx, test.query, p); err != nil {
 				t.Fatalf("GetLogs: %v", err)
 			}
-			opts := []cmp.Option{protocmp.Transform()}
+			opts := []cmp.Option{protocmp.Transform(), prettyTimes}
 			opts = append(opts, test.opts...)
 			require.NoDiff(t, test.want, p.responses, opts)
 		})
+	}
+
+	t.Run("FollowPagingHints_Forward", followPagingHintsTest(
+		&ls,
+		&logs.GetLogsRequest{
+			Query: &logs.LogQuery{
+				QueryType: &logs.LogQuery_Admin{
+					Admin: &logs.AdminLogQuery{
+						AdminType: &logs.AdminLogQuery_App{
+							App: "simple",
+						},
+					},
+				},
+			},
+			Filter: &logs.LogFilter{
+				TimeRange: &logs.TimeRangeLogFilter{
+					// From: timestamppb.New(time.Date(1970, 1, 1, 0, 0, 0, 0, time.UTC)),
+					From: timestamppb.New(time.Date(2024, 4, 15, 0, 0, 0, 0, time.UTC)),
+				},
+				Limit: 10,
+			},
+			WantPagingHint: true,
+		},
+		func(x *logs.PagingHint) *logs.GetLogsRequest { return x.Newer }),
+	)
+	t.Run("FollowPagingHints_Backwards", followPagingHintsTest(
+		&ls,
+		&logs.GetLogsRequest{
+			Query: &logs.LogQuery{
+				QueryType: &logs.LogQuery_Admin{
+					Admin: &logs.AdminLogQuery{
+						AdminType: &logs.AdminLogQuery_App{
+							App: "simple",
+						},
+					},
+				},
+			},
+			Filter: &logs.LogFilter{
+				TimeRange: &logs.TimeRangeLogFilter{
+					// Until: timestamppb.New(time.Date(2100, 1, 1, 0, 0, 0, 0, time.UTC)),
+					Until: timestamppb.New(time.Date(2024, 5, 2, 0, 0, 0, 0, time.UTC)),
+				},
+				Limit: 10,
+			},
+			WantPagingHint: true,
+		},
+		func(x *logs.PagingHint) *logs.GetLogsRequest { return x.Older }),
+	)
+}
+
+func followPagingHintsTest(ls *logservice.LogService, initial *logs.GetLogsRequest, next func(*logs.PagingHint) *logs.GetLogsRequest) func(t *testing.T) {
+	return func(t *testing.T) {
+		t.Helper()
+		ctx := pctx.TestContext(t)
+		q := initial
+		var want []*logs.GetLogsResponse
+		for i := 0; i < 1000; i++ {
+			want = append(want, jsonLog(map[string]any{
+				"time":    time.Date(2024, 5, 1, 0, 0, 0, i, time.UTC).Format(time.RFC3339Nano),
+				"message": strconv.Itoa(i),
+			}))
+		}
+
+		var got []*logs.GetLogsResponse
+		var terminated bool
+		for i := 0; i < 1000; i++ { // avoid infinite loop
+			p := new(testPublisher)
+			if err := ls.GetLogs(ctx, q, p); err != nil {
+				t.Fatalf("GetLogs: %v", err)
+			}
+			if len(p.responses) == 0 {
+				break
+			}
+			var gotLogs bool
+			var gotPagingHint bool
+			for _, r := range p.responses {
+				switch x := r.ResponseType.(type) {
+				case *logs.GetLogsResponse_PagingHint:
+					if gotPagingHint {
+						t.Errorf("got duplicate paging hint %v", x.PagingHint)
+					}
+					q = next(x.PagingHint)
+					gotPagingHint = true
+					log.Info(ctx, "next page", zap.Int("i", i), log.Proto("timeRange", q.GetFilter().GetTimeRange()))
+				case *logs.GetLogsResponse_Log:
+					gotLogs = true
+					got = append(got, r)
+				}
+			}
+			if !gotPagingHint {
+				t.Errorf("did not get a paging hint on batch %v", i)
+				terminated = true
+				break
+			}
+			if !gotLogs {
+				terminated = true
+				break
+			}
+		}
+		if !terminated {
+			t.Errorf("logs loop should have terminated on its own, but didn't")
+		}
+		require.NoDiff(t, want, got, []cmp.Option{sortByNativeTimestamp, protocmp.Transform(), prettyTimes, jqObject("del(.severity)"), onlyCompareObject})
 	}
 }
