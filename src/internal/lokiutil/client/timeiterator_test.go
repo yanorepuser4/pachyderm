@@ -16,6 +16,8 @@ func TestTimeIterator(t *testing.T) {
 		name      string
 		endOfTime time.Time
 		iterator  *TimeIterator
+		limit     int
+		logs      []time.Time
 		want      []timeRange
 	}{
 		{
@@ -74,9 +76,12 @@ func TestTimeIterator(t *testing.T) {
 				Step:  9*time.Hour - time.Nanosecond,
 			},
 			want: []timeRange{
-				{time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC), time.Date(2020, 1, 1, 8, 59, 59, maxNanoseconds, time.UTC)},
-				{time.Date(2020, 1, 1, 8, 59, 59, maxNanoseconds, time.UTC), time.Date(2020, 1, 1, 17, 59, 59, maxNanoseconds-1, time.UTC)},
-				{time.Date(2020, 1, 1, 17, 59, 59, maxNanoseconds-1, time.UTC), time.Date(2020, 1, 2, 0, 0, 0, 1, time.UTC)},
+				{time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC),
+					time.Date(2020, 1, 1, 8, 59, 59, maxNanoseconds, time.UTC)},
+				{time.Date(2020, 1, 1, 8, 59, 59, maxNanoseconds, time.UTC),
+					time.Date(2020, 1, 1, 17, 59, 59, maxNanoseconds-1, time.UTC)},
+				{time.Date(2020, 1, 1, 17, 59, 59, maxNanoseconds-1, time.UTC),
+					time.Date(2020, 1, 2, 0, 0, 0, 1, time.UTC)},
 			},
 		},
 		{
@@ -153,28 +158,119 @@ func TestTimeIterator(t *testing.T) {
 				{time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC), time.Date(2020, 1, 1, 0, 0, 0, 1, time.UTC)},
 			},
 		},
+		{
+			name:  "bounded forward traversal with limits",
+			limit: 1,
+			logs: []time.Time{
+				time.Date(2020, 1, 1, 9, 0, 0, 0, time.UTC),
+			},
+			iterator: &TimeIterator{
+				Start: time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC),
+				End:   time.Date(2020, 1, 2, 0, 0, 0, 0, time.UTC),
+				Step:  24 * time.Hour,
+			},
+			want: []timeRange{
+				{time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC), time.Date(2020, 1, 2, 0, 0, 0, 0, time.UTC)},
+				{time.Date(2020, 1, 1, 9, 0, 0, 1, time.UTC), time.Date(2020, 1, 2, 0, 0, 0, 1, time.UTC)},
+			},
+		},
+		{
+			name:  "backward traversal with limits",
+			limit: 1,
+			logs: []time.Time{
+				time.Date(2020, 1, 1, 9, 0, 0, 0, time.UTC),
+			},
+			iterator: &TimeIterator{
+				Start: time.Date(2020, 1, 3, 0, 0, 0, 0, time.UTC),
+				End:   time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC),
+				Step:  24 * time.Hour,
+			},
+			want: []timeRange{
+				{time.Date(2020, 1, 2, 0, 0, 0, 1, time.UTC), time.Date(2020, 1, 3, 0, 0, 0, 1, time.UTC)},
+				{time.Date(2020, 1, 1, 0, 0, 0, 1, time.UTC), time.Date(2020, 1, 2, 0, 0, 0, 1, time.UTC)},
+				{time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC), time.Date(2020, 1, 1, 9, 0, 0, 0, time.UTC)},
+			},
+		},
+		{
+			name:  "backward traversal with larger limit", // limits do not affect traversal
+			limit: 2,
+			logs: []time.Time{
+				time.Date(2020, 1, 1, 9, 0, 0, 0, time.UTC),
+			},
+			iterator: &TimeIterator{
+				Start: time.Date(2020, 1, 3, 0, 0, 0, 0, time.UTC),
+				End:   time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC),
+				Step:  24 * time.Hour,
+			},
+			want: []timeRange{
+				{time.Date(2020, 1, 2, 0, 0, 0, 1, time.UTC), time.Date(2020, 1, 3, 0, 0, 0, 1, time.UTC)},
+				{time.Date(2020, 1, 1, 0, 0, 0, 1, time.UTC), time.Date(2020, 1, 2, 0, 0, 0, 1, time.UTC)},
+				{time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC), time.Date(2020, 1, 1, 0, 0, 0, 1, time.UTC)},
+			},
+		},
+		{
+			name:  "backward traversal with larger limit that affects traversal",
+			limit: 2,
+			logs: []time.Time{
+				time.Date(2020, 1, 1, 10, 0, 0, 0, time.UTC),
+				time.Date(2020, 1, 1, 9, 0, 0, 0, time.UTC),
+			},
+			iterator: &TimeIterator{
+				Start: time.Date(2020, 1, 3, 0, 0, 0, 0, time.UTC),
+				End:   time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC),
+				Step:  24 * time.Hour,
+			},
+			want: []timeRange{
+				{time.Date(2020, 1, 2, 0, 0, 0, 1, time.UTC), time.Date(2020, 1, 3, 0, 0, 0, 1, time.UTC)},
+				{time.Date(2020, 1, 1, 0, 0, 0, 1, time.UTC), time.Date(2020, 1, 2, 0, 0, 0, 1, time.UTC)},
+				{time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC), time.Date(2020, 1, 1, 9, 0, 0, 0, time.UTC)},
+			},
+		},
 	}
 
 	for _, test := range testData {
 		t.Run(test.name, func(t *testing.T) {
 			if !test.endOfTime.IsZero() {
-				old := testingEndOfTime
+				t.Log("using special end of time value")
 				testingEndOfTime = test.endOfTime
 				t.Cleanup(func() {
-					testingEndOfTime = old
+					t.Log("restoring end of time value")
+					testingEndOfTime = time.Time{}
 				})
 			}
 			var got []timeRange
-			n := len(test.want)
+			var logsEverUsed bool
+			n := len(test.want) + 5
+			limit := test.limit
 			for test.iterator.Next() {
 				s, e := test.iterator.Interval()
 				got = append(got, timeRange{s, e})
+				for _, l := range test.logs { // test author must sort test.logs in traversal order.
+					if !l.Before(s) && l.Before(e) { // ( !(l < s) && l < e ) -> (s <= l < e)
+						logsEverUsed = true
+						limit--
+						if limit == 0 {
+							test.iterator.ObserveLast(l)
+							break
+						}
+					}
+				}
 				n--
 				if n < 0 {
 					t.Error("iterator may be out of control; bailing out")
 					break
 				}
 			}
+
+			// some checks to ensure that the test is working like the author expects
+			if len(test.logs) > 0 && !logsEverUsed {
+				t.Error("no test logs were ever consumed")
+			}
+			if test.limit > 0 && limit == test.limit {
+				t.Error("the provided limit was never used")
+			}
+
+			// what we actually care about
 			require.NoDiff(t, test.want, got, nil, "time ranges should match")
 		})
 	}

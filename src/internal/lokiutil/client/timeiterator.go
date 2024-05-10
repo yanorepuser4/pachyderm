@@ -100,8 +100,19 @@ func (ti *TimeIterator) Next() bool {
 	}
 }
 
-// interval returns the current time interval to query.  It is aware of the quirk that our times are
+// Interval returns the current time interval to query.  It is aware of the quirk that our times are
 // inclusive but Loki's end time is exclusive.
 func (ti *TimeIterator) Interval() (start time.Time, end time.Time) {
 	return ti.stepStart, ti.stepEnd
+}
+
+// ObserveLast allows the iterator to observe the last received timestamp, in the case where exactly
+// the Limit number of logs were returned.  When this happens, it means the time range is being
+// truncated in favor of sticking to the limit, so we need to adjust where the next step starts.
+func (ti *TimeIterator) ObserveLast(t time.Time) {
+	if ti.forward() {
+		ti.stepEnd = t.Add(time.Nanosecond)
+	} else {
+		ti.stepStart = t
+	}
 }
