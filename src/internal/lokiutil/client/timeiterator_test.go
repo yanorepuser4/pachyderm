@@ -46,8 +46,9 @@ func TestTimeIterator(t *testing.T) {
 		{
 			name: "bounded forward traversal without last nanosecond",
 			iterator: &TimeIterator{
-				End:  time.Date(2020, 1, 1, 23, 59, 59, maxNanoseconds, time.UTC),
-				Step: 24 * time.Hour,
+				Start: time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC),
+				End:   time.Date(2020, 1, 1, 23, 59, 59, maxNanoseconds, time.UTC),
+				Step:  24 * time.Hour,
 			},
 			want: []timeRange{
 				{time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC), time.Date(2020, 1, 2, 0, 0, 0, 0, time.UTC)},
@@ -82,17 +83,6 @@ func TestTimeIterator(t *testing.T) {
 					time.Date(2020, 1, 1, 17, 59, 59, maxNanoseconds-1, time.UTC)},
 				{time.Date(2020, 1, 1, 17, 59, 59, maxNanoseconds-1, time.UTC),
 					time.Date(2020, 1, 2, 0, 0, 0, 1, time.UTC)},
-			},
-		},
-		{
-			name: "forward traversal from start of time",
-			iterator: &TimeIterator{
-				End:  time.Date(2020, 1, 2, 0, 0, 0, 0, time.UTC),
-				Step: 24 * time.Hour,
-			},
-			want: []timeRange{
-				{time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC), time.Date(2020, 1, 2, 0, 0, 0, 0, time.UTC)},
-				{time.Date(2020, 1, 2, 0, 0, 0, 0, time.UTC), time.Date(2020, 1, 2, 0, 0, 0, 1, time.UTC)},
 			},
 		},
 		{
@@ -159,6 +149,17 @@ func TestTimeIterator(t *testing.T) {
 			},
 		},
 		{
+			name: "backwards traversal towards start of time",
+			iterator: &TimeIterator{
+				End:  time.Date(2020, 1, 2, 0, 0, 0, 0, time.UTC),
+				Step: 24 * time.Hour,
+			},
+			want: []timeRange{
+				{time.Date(2020, 1, 1, 0, 0, 0, 1, time.UTC), time.Date(2020, 1, 2, 0, 0, 0, 1, time.UTC)},
+				{time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC), time.Date(2020, 1, 1, 0, 0, 0, 1, time.UTC)},
+			},
+		},
+		{
 			name:  "bounded forward traversal with limits",
 			limit: 1,
 			logs: []time.Time{
@@ -219,6 +220,23 @@ func TestTimeIterator(t *testing.T) {
 				Start: time.Date(2020, 1, 3, 0, 0, 0, 0, time.UTC),
 				End:   time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC),
 				Step:  24 * time.Hour,
+			},
+			want: []timeRange{
+				{time.Date(2020, 1, 2, 0, 0, 0, 1, time.UTC), time.Date(2020, 1, 3, 0, 0, 0, 1, time.UTC)},
+				{time.Date(2020, 1, 1, 0, 0, 0, 1, time.UTC), time.Date(2020, 1, 2, 0, 0, 0, 1, time.UTC)},
+				{time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC), time.Date(2020, 1, 1, 9, 0, 0, 0, time.UTC)},
+			},
+		},
+		{
+			name:  "unbounded backward traversal with larger limit that affects traversal",
+			limit: 2,
+			logs: []time.Time{
+				time.Date(2020, 1, 1, 10, 0, 0, 0, time.UTC),
+				time.Date(2020, 1, 1, 9, 0, 0, 0, time.UTC),
+			},
+			iterator: &TimeIterator{
+				End:  time.Date(2020, 1, 3, 0, 0, 0, 0, time.UTC),
+				Step: 24 * time.Hour,
 			},
 			want: []timeRange{
 				{time.Date(2020, 1, 2, 0, 0, 0, 1, time.UTC), time.Date(2020, 1, 3, 0, 0, 0, 1, time.UTC)},

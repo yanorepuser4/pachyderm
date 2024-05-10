@@ -22,10 +22,11 @@ func endOfTime() time.Time {
 // TimeIterator iterates between the start time and end time by a step interval.  start and end are
 // both inclusive, and can be zero.  Times are interpreted as:
 //
+// * (start, end)
 // * (0, 0)     -> forwards from start of time to end of time
-// * (0, x)     -> forwards from start of time to x
-// * (x, x + d) -> forwards from x to x + d
+// * (0, x)     -> backwards from x to the start of time
 // * (x, 0)     -> forwards from x to end of time
+// * (x, x + d) -> forwards from x to x + d
 // * (x, x - d) -> backwards from x to x - d
 // * (x, x)     -> exactly 1 nanosecond
 type TimeIterator struct {
@@ -38,7 +39,11 @@ type TimeIterator struct {
 // forward returns true if the iterator is going forward through time.
 func (ti *TimeIterator) forward() bool {
 	switch {
-	case ti.Start.IsZero() || ti.End.IsZero():
+	case ti.Start.IsZero() && ti.End.IsZero(): // forwards from start of time to end of time
+		return true
+	case ti.Start.IsZero(): // backwards from end
+		return false
+	case ti.End.IsZero(): // forwards from start
 		return true
 	case !ti.Start.After(ti.End): // !(x > y) == (x <= y)
 		return true
@@ -48,14 +53,7 @@ func (ti *TimeIterator) forward() bool {
 
 // moveForward moves one step forwards, returning true if the calculated interval is valid.
 func (ti *TimeIterator) moveForward() bool {
-	effectiveEnd := ti.End
-	if effectiveEnd.IsZero() {
-		effectiveEnd = endOfTime().Add(-time.Nanosecond)
-	}
-
-	// figure out the start
-	if ti.stepStart.IsZero() {
-		// this is the first iteration.
+	if ti.stepStart.IsZero() { // first call to moveForward
 		if ti.Start.IsZero() {
 			ti.stepStart = startOfTime()
 		} else {
@@ -65,7 +63,10 @@ func (ti *TimeIterator) moveForward() bool {
 		ti.stepStart = ti.stepEnd
 	}
 
-	// figure out the end
+	effectiveEnd := ti.End
+	if effectiveEnd.IsZero() {
+		effectiveEnd = endOfTime().Add(-time.Nanosecond)
+	}
 	ti.stepEnd = ti.stepStart.Add(ti.Step)
 	if ti.stepEnd.After(effectiveEnd) {
 		ti.stepEnd = effectiveEnd.Add(time.Nanosecond)
@@ -76,7 +77,6 @@ func (ti *TimeIterator) moveForward() bool {
 // moveBackward moves one step backwards, returning true if the calculated interval is valid.
 func (ti *TimeIterator) moveBackward() bool {
 	if ti.stepStart.IsZero() {
-		// this is the first iteration
 		ti.stepEnd = ti.Start.Add(time.Nanosecond)
 	} else {
 		ti.stepEnd = ti.stepStart
@@ -88,6 +88,23 @@ func (ti *TimeIterator) moveBackward() bool {
 	return ti.stepEnd.After(ti.End)
 }
 
+// moveBackwardFromEnd moves one step backwards (for the case when Start is open and End is set),
+// returning true if the calculated interval is valid.
+func (ti *TimeIterator) moveBackwardFromEnd() bool {
+	if ti.stepStart.IsZero() {
+		ti.stepEnd = ti.End.Add(time.Nanosecond)
+	} else {
+		ti.stepEnd = ti.stepStart
+	}
+	ti.stepStart = ti.stepEnd.Add(-ti.Step)
+
+	sot := startOfTime()
+	if ti.stepStart.Before(sot) {
+		ti.stepStart = sot
+	}
+	return ti.stepEnd.After(sot)
+}
+
 // Next advances the iterator, returning false if the iterator is complete.
 func (ti *TimeIterator) Next() bool {
 	if ti.Step == 0 {
@@ -95,6 +112,8 @@ func (ti *TimeIterator) Next() bool {
 	}
 	if ti.forward() {
 		return ti.moveForward()
+	} else if ti.Start.IsZero() {
+		return ti.moveBackwardFromEnd()
 	} else {
 		return ti.moveBackward()
 	}
