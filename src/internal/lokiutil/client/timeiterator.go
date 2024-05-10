@@ -119,6 +119,15 @@ func (ti *TimeIterator) Next() bool {
 	}
 }
 
+// Direction returns the direction string to pass to Loki.
+func (ti *TimeIterator) Direction() string {
+	if ti.forward() {
+		return "forward"
+	} else {
+		return "backward"
+	}
+}
+
 // Interval returns the current time interval to query.  It is aware of the quirk that our times are
 // inclusive but Loki's end time is exclusive.
 func (ti *TimeIterator) Interval() (start time.Time, end time.Time) {
