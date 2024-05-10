@@ -8,6 +8,7 @@ go_library(
         "client.go",
         "json.go",
         "stringbuilder.go",
+        "timeiterator.go",
     ],
     importpath = "github.com/pachyderm/pachyderm/v2/src/internal/lokiutil/client",
     visibility = ["//src:__subpackages__"],
@@ -19,8 +20,10 @@ go_library(
         "@com_github_json_iterator_go//:go",
         "@com_github_modern_go_reflect2//:reflect2",
         "@in_gopkg_yaml_v2//:yaml_v2",
+        "@org_golang_x_exp//maps",
         "@org_golang_x_net//websocket",
         "@org_uber_go_zap//:zap",
+        "@org_uber_go_zap//zapcore",
     ],
 )
 
@@ -41,6 +44,13 @@ go_test(
     name = "protocol_test",
     size = "small",
     srcs = ["protocol_test.go"],
+    embed = [":client"],
+    deps = ["//src/internal/require"],
+)
+
+go_test(
+    name = "timeiterator_test",
+    srcs = ["timeiterator_test.go"],
     embed = [":client"],
     deps = ["//src/internal/require"],
 )
