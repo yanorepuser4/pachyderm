@@ -12,8 +12,26 @@ import (
 	"time"
 
 	"github.com/pachyderm/pachyderm/v2/src/internal/errors"
+	"github.com/pachyderm/pachyderm/v2/src/internal/log"
 	loki "github.com/pachyderm/pachyderm/v2/src/internal/lokiutil/client"
+	"go.uber.org/zap"
 )
+
+const (
+	defaultRange     = 720 * time.Hour // If Loki can't return its configured max query range, use this one instead.
+	defaultBatchSize = 1000            // If Loki can't return its configured batch size, use this one instead.
+)
+
+type logDirection string
+
+const (
+	forwardLogDirection  logDirection = "forward"
+	backwardLogDirection logDirection = "backward"
+)
+
+func (d logDirection) Forward() bool {
+	return d == forwardLogDirection
+}
 
 type ErrInvalidBatchSize struct {
 	batchSize, overlappingCount int
@@ -24,11 +42,124 @@ func (err ErrInvalidBatchSize) Error() string {
 		"(there will always be 1 overlapping entry but Loki allows multiple entries to have "+
 		"the same timestamp, so when a batch ends in this scenario the next query will include "+
 		"all the overlapping entries again).  Please increase your batch size to at least %v to account "+
-		"for overlapping entryes\n", err.batchSize, err.overlappingCount, err.RecommendedBatchSize())
+		"for overlapping entries\n", err.batchSize, err.overlappingCount, err.RecommendedBatchSize())
 }
 
 func (err ErrInvalidBatchSize) RecommendedBatchSize() int {
 	return err.overlappingCount + 1
+}
+
+// doQuery does a ranged Loki logs query.  Unlike the raw QueryRange API, start and end are both
+// inclusive, and control the direction of traversal.  start and end do not need to be within an
+// arbitrary time range of each other to placate the Loki server, this function handles making
+// multiple queries to satisfy that constraint.
+func doQuery2(ctx context.Context, client *loki.Client, logQL string, limit int, start, end time.Time, publish func(context.Context, loki.Entry) (bool, error)) (retErr error) {
+	ctx, done := log.SpanContext(ctx, "doQuery", zap.String("logql", logQL))
+	defer done(log.Errorp(&retErr))
+
+	// Figure out our maximum range interval and batch size.
+	r, bs, err := fetchLimitsConfig(ctx, client)
+	if err != nil {
+		log.Info(ctx, "failed to determine loki's maximum request size; assuming reasonable defaults", zap.Error(err), zap.Duration("range", r), zap.Int("batch_size", bs))
+	}
+	if limit > 0 && limit < bs {
+		bs = limit
+	}
+	if limit == 0 {
+		limit = math.MaxInt
+	}
+	log.Debug(ctx, "fetched limits", zap.Duration("range", r), zap.Int("batch_size", bs))
+
+	// Bound the times that our search uses; Loki automatically adjusts future end times to the
+	// current time.  Choosing something other than 1900-1-1 for the earliest possible start
+	// time just eliminiates a bunch of useless queries.
+	if start.IsZero() {
+		start = time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
+	}
+	if end.IsZero() || end.After(time.Now()) {
+		end = time.Now()
+	}
+
+	// Loop over the time range and extract the logs.  For forward traversal (start before end),
+	// we grab chunks of time length "r" starting at "start".  The next chunk then starts at the
+	// last received time.  Iteration is complete when start > end.  For backwards traveral
+	// (start after end), we grab chunks of time length r, starting at end-r and ending at end.
+	// The oldest log received becomes the new end, and the start becomes new end - r.
+	// Iteration is complete when end < start.
+	var direction logDirection
+	var chunkStart, chunkEnd time.Time
+	if start.Before(end) {
+		direction = forwardLogDirection
+		chunkStart = start
+		chunkEnd = start.Add(r)
+		if chunkEnd.After(end) {
+			chunkEnd = end
+		}
+	} else {
+		direction = backwardLogDirection
+		chunkEnd = end
+		chunkStart = end.Add(-r)
+		if chunkStart.Before(start) {
+			chunkStart = start
+		}
+	}
+
+	log.Debug(ctx, "starting query loop", zap.Time("start", start), zap.Time("end", end), zap.Time("chunkStart", chunkStart), zap.Time("chunkEnd", chunkEnd))
+
+	for limit > 0 && !(direction.Forward() && chunkStart.After(end) || !direction.Forward() && chunkEnd.Before(start)) {
+		done := log.Span(ctx, "QueryRange", zap.Time("chunkStart", chunkStart), zap.Time("chunkEnd", chunkEnd), zap.Int("limit", limit), zap.Int("batch_size", min(limit, bs)))
+		resp, err := client.QueryRange(ctx, logQL, min(limit, bs), chunkStart, chunkEnd.Add(time.Nanosecond), string(direction), 0, 0, true)
+		if err != nil {
+			done(zap.Error(err))
+			return errors.Wrapf(err, "QueryRange(batchSize=%v,limit=%v,chunkStart=%v,chunkEnd=%v,direction=%v)", bs, limit, chunkStart.Format(time.RFC3339Nano), chunkEnd.Format(time.RFC3339Nano), direction)
+		}
+		done(zap.Object("response", resp))
+
+		var oldest, newest time.Time
+		streams, ok := resp.Data.Result.(loki.Streams)
+		if !ok {
+			return errors.Errorf("unexpected response type from loki %v", resp.Data.ResultType)
+		}
+		for _, stream := range streams {
+			for _, entry := range stream.Entries {
+				if oldest.IsZero() || entry.Timestamp.Before(oldest) {
+					oldest = entry.Timestamp
+				}
+				if entry.Timestamp.After(newest) {
+					newest = entry.Timestamp
+				}
+				keep, err := publish(ctx, entry)
+				if err != nil {
+					return errors.Wrap(err, "publish entry")
+				}
+				if keep {
+					limit--
+				}
+			}
+		}
+		if direction.Forward() {
+			if newest.IsZero() {
+				chunkStart = chunkEnd.Add(time.Nanosecond)
+			} else {
+				chunkStart = newest.Add(time.Nanosecond)
+			}
+			chunkEnd = chunkStart.Add(r)
+			if chunkEnd.After(end) {
+				chunkEnd = end
+			}
+		} else {
+			if oldest.IsZero() {
+				chunkEnd = chunkStart.Add(-time.Nanosecond)
+			} else {
+				chunkEnd = oldest
+			}
+			chunkStart = chunkEnd.Add(-r)
+			if chunkStart.Before(start) {
+				chunkStart = start
+			}
+		}
+	}
+	return nil
 }
 
 // doQuery executes a query.
@@ -46,18 +177,6 @@ func doQuery(ctx context.Context, client *loki.Client, logQL string, limit int, 
 	)
 	if limit == 0 {
 		limit = math.MaxInt
-	}
-	// query server to get the maximum batch size it supports
-	if config, err := client.QueryConfig(ctx); err != nil {
-		return errors.Wrap(err, "querying config")
-	} else {
-		limits, ok := config["limits_config"].(map[any]any)
-		if !ok {
-			return errors.Wrapf(err, "unknown limits config type %T", config["limits_config"])
-		}
-		if batchSize, ok = limits["max_entries_limit_per_query"].(int); !ok {
-			return errors.Wrapf(err, "unknown max_entries_limit_per_query type %T", limits["max_entries_limit_per_query"])
-		}
 	}
 	for total < limit && start.Before(end) {
 		bs := batchSize

@@ -35,6 +35,7 @@ go_test(
     embed = [":logs"],
     deps = [
         "//src/internal/errors",
+        "//src/internal/log",
         "//src/internal/lokiutil",
         "//src/internal/lokiutil/client",
         "//src/internal/lokiutil/testloki",
@@ -51,5 +52,6 @@ go_test(
         "@org_golang_google_protobuf//testing/protocmp",
         "@org_golang_google_protobuf//types/known/structpb",
         "@org_golang_google_protobuf//types/known/timestamppb",
+        "@org_uber_go_zap//:zap",
     ],
 )
