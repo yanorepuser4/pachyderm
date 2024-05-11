@@ -42,7 +42,7 @@ type Streams []Stream
 
 func (ss Streams) MarshalLogArray(enc zapcore.ArrayEncoder) error {
 	for _, s := range ss {
-		enc.AppendObject(s)
+		enc.AppendObject(s) //nolint:errcheck
 	}
 	return nil
 }
@@ -105,7 +105,7 @@ func (q QueryResponseData) MarshalLogObject(enc zapcore.ObjectEncoder) error {
 	enc.AddString("result_type", string(q.ResultType))
 	switch x := q.Result.(type) {
 	case Streams:
-		enc.AddArray("streams", x)
+		enc.AddArray("streams", x) //nolint:errcheck
 	}
 	return nil
 }
@@ -122,7 +122,7 @@ func (r *QueryResponse) MarshalLogObject(enc zapcore.ObjectEncoder) error {
 		return nil
 	}
 	enc.AddString("status", r.Status)
-	enc.AddObject("data", r.Data)
+	enc.AddObject("data", r.Data) //nolint:errcheck
 	return nil
 }
 

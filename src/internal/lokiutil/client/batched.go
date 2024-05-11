@@ -38,7 +38,6 @@ func (c *Client) FetchLimitsConfig(ctx context.Context) (time.Duration, int, err
 	if !ok {
 		return defaultRange, defaultBatchSize, errors.Wrapf(err, "unknown max_entries_limit_per_query %#v", limits["max_entries_limit_per_query"])
 	}
-	maxRange := defaultRange
 	if maxRangeStr, ok := limits["max_query_length"].(string); ok {
 		r, err := model.ParseDuration(maxRangeStr) // Loki uses Prometheus durations here, not Go durations.
 		if err != nil {
@@ -50,6 +49,7 @@ func (c *Client) FetchLimitsConfig(ctx context.Context) (time.Duration, int, err
 		//
 		// Example: start=2024-04-01T23:00:00.000000001Z, end=2024-05-02T00:00:00.000000001Z:
 		// > the query time range exceeds the limit (query length: 721h0m0.001s, limit: 721h0m0s)
+		var maxRange time.Duration
 		if r := time.Duration(r); r > time.Hour {
 			maxRange = r - time.Hour
 		} else if r > time.Millisecond {
@@ -57,10 +57,9 @@ func (c *Client) FetchLimitsConfig(ctx context.Context) (time.Duration, int, err
 		} else {
 			maxRange = r
 		}
-	} else {
-		return defaultRange, batchSize, errors.Wrapf(err, "unknown max_query_length %#v", limits["max_query_length"])
+		return maxRange, batchSize, nil
 	}
-	return maxRange, batchSize, nil
+	return defaultRange, batchSize, errors.Wrapf(err, "unknown max_query_length %#v", limits["max_query_length"])
 }
 
 var (

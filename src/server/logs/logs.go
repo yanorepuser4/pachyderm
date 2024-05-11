@@ -420,7 +420,7 @@ func (a *adapter) publish(ctx context.Context, labels loki.LabelSet, entry *loki
 			Line:      []byte(entry.Line),
 			Timestamp: timestamppb.New(entry.Timestamp),
 		},
-		Object: &structpb.Struct{Fields: make(map[string]*structpb.Value)},
+		Object: new(structpb.Struct),
 	}
 	if strings.HasPrefix(entry.Line, "{") {
 		if err := msg.Object.UnmarshalJSON([]byte(entry.Line)); err != nil {
@@ -442,6 +442,9 @@ func (a *adapter) publish(ctx context.Context, labels loki.LabelSet, entry *loki
 		} else if msg.PpsLogMessage.Ts != nil {
 			msg.NativeTimestamp = msg.PpsLogMessage.Ts
 		}
+	}
+	if msg.Object == nil || msg.Object.Fields == nil {
+		msg.Object = &structpb.Struct{Fields: make(map[string]*structpb.Value)}
 	}
 	for k, v := range labels {
 		msg.Object.Fields["#"+k] = structpb.NewStringValue(v)
