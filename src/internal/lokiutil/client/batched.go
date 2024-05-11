@@ -190,9 +190,10 @@ func (q *batchQuery) run(rctx context.Context) error {
 		if q.limit <= 0 {
 			break
 		}
-		if q.newOffset > 0 {
+		if o := q.newOffset; o > 0 {
 			// If there's an offset remaining, we need to re-query the last millisecond.
-			if err := q.queryOneNanosecond(ctx, last, q.newOffset); err != nil {
+			q.newOffset = 0
+			if err := q.queryOneNanosecond(ctx, last, o); err != nil {
 				return errors.Wrapf(err, "queryOneNanosecond(i=%v, time=%v)", i, s.Format(time.RFC3339Nano))
 			}
 			if q.limit <= 0 {

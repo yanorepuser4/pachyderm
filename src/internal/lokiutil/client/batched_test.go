@@ -293,17 +293,30 @@ func TestBatchedQueryRange(t *testing.T) {
 			wantBatchSizeWarning: true,
 		},
 		{
-			name:      "backward offset into a long string of duplicate timestamps, limited by batch size of 1 and limit",
-			start:     time.Date(2024, 5, 1, 0, 0, 0, 81, time.UTC),
+			name:      "backwards offset into a long string of duplicate timestamps, limited by limit",
+			start:     time.Date(2024, 5, 1, 0, 0, 0, 82, time.UTC),
 			end:       time.Date(2024, 5, 1, 0, 0, 0, 80, time.UTC),
-			batchSize: 1,
+			batchSize: 3,
+			limit:     4,
+			want: []string{
+				`/"message":"82"/`,
+				`/"message":"81"/`,
+				`/"message":"duplicate 99"/`, // next log has offset=1
+				`/"message":"duplicate 98"/`, // next log has offset=2
+			},
+			wantOffset: 2,
+		},
+		{
+			name:      "continuation of above",
+			end:       time.Date(2024, 5, 1, 0, 0, 0, 80, time.UTC),
+			offset:    2,
+			batchSize: 3,
 			limit:     2,
 			want: []string{
-				`/"message":"81"/`,
-				`/"message":"duplicate 99"/`,
+				`/"message":"duplicate 97"/`,
+				`/"message":"79"/`,
 			},
 			wantBatchSizeWarning: true,
-			wantOffset:           1,
 		},
 		{
 			name:   "offset beyond the end",
