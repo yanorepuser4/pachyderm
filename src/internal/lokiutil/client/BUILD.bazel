@@ -17,6 +17,7 @@ go_library(
         "//src/internal/backoff",
         "//src/internal/errors",
         "//src/internal/log",
+        "//src/internal/pctx",
         "//src/internal/promutil",
         "@com_github_json_iterator_go//:go",
         "@com_github_modern_go_reflect2//:reflect2",
@@ -54,6 +55,7 @@ go_test(
 
 go_test(
     name = "timeiterator_test",
+    size = "small",
     srcs = ["timeiterator_test.go"],
     data = glob(["testdata/**"]),
     embed = [":client"],
@@ -62,6 +64,7 @@ go_test(
 
 go_test(
     name = "batched_test",
+    size = "small",
     srcs = ["batched_test.go"],
     data = glob(["testdata/**"]),
     deps = [

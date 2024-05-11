@@ -4,21 +4,6 @@ import (
 	"time"
 )
 
-func startOfTime() time.Time {
-	// This saves searching 600 months from 1970-1-1, and people probably don't want logs from
-	// before this anyway.  If they want them, they can specify an explicit start date.
-	return time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
-}
-
-var testingEndOfTime time.Time
-
-func endOfTime() time.Time {
-	if !testingEndOfTime.IsZero() {
-		return testingEndOfTime
-	}
-	return time.Now()
-}
-
 // TimeIterator iterates between the start time and end time by a step interval.  start and end are
 // both inclusive, and can be zero.  Times are interpreted as:
 //
@@ -33,7 +18,21 @@ type TimeIterator struct {
 	Start, End time.Time     // Initial start and end times
 	Step       time.Duration // Max duration of each step
 
+	now                time.Time
 	stepStart, stepEnd time.Time // calculated next interval, stepEnd is exclusive.
+}
+
+func (ti *TimeIterator) startOfTime() time.Time {
+	// This saves searching 600 months from 1970-1-1, and people probably don't want logs from
+	// before this anyway.  If they want them, they can specify an explicit start date.
+	return time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
+}
+
+func (ti *TimeIterator) endOfTime() time.Time {
+	if ti.now.IsZero() {
+		ti.now = time.Now()
+	}
+	return ti.now
 }
 
 // forward returns true if the iterator is going forward through time.
@@ -55,7 +54,7 @@ func (ti *TimeIterator) forward() bool {
 func (ti *TimeIterator) moveForward() bool {
 	if ti.stepStart.IsZero() { // first call to moveForward
 		if ti.Start.IsZero() {
-			ti.stepStart = startOfTime()
+			ti.stepStart = ti.startOfTime()
 		} else {
 			ti.stepStart = ti.Start
 		}
@@ -65,7 +64,7 @@ func (ti *TimeIterator) moveForward() bool {
 
 	effectiveEnd := ti.End
 	if effectiveEnd.IsZero() {
-		effectiveEnd = endOfTime().Add(-time.Nanosecond)
+		effectiveEnd = ti.endOfTime().Add(-time.Nanosecond)
 	}
 	ti.stepEnd = ti.stepStart.Add(ti.Step)
 	if ti.stepEnd.After(effectiveEnd) {
@@ -98,7 +97,7 @@ func (ti *TimeIterator) moveBackwardFromEnd() bool {
 	}
 	ti.stepStart = ti.stepEnd.Add(-ti.Step)
 
-	sot := startOfTime()
+	sot := ti.startOfTime()
 	if ti.stepStart.Before(sot) {
 		ti.stepStart = sot
 	}

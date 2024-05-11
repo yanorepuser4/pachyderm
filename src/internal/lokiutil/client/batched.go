@@ -2,11 +2,14 @@ package client
 
 import (
 	"context"
+	"fmt"
 	"sort"
+	"sync/atomic"
 	"time"
 
 	"github.com/pachyderm/pachyderm/v2/src/internal/errors"
 	"github.com/pachyderm/pachyderm/v2/src/internal/log"
+	"github.com/pachyderm/pachyderm/v2/src/internal/pctx"
 	"github.com/prometheus/common/model"
 	"go.uber.org/zap"
 )
@@ -15,6 +18,10 @@ const (
 	defaultRange     = 720 * time.Hour // If Loki can't return its configured max query range, use this one instead.
 	defaultBatchSize = 1000            // If Loki can't return its configured batch size, use this one instead.
 )
+
+func Time(name string, t time.Time) zap.Field {
+	return zap.String(name, t.Format(time.RFC3339Nano))
+}
 
 // FetchLimitsConfig returns the maximum query length and the maximum query batch size.
 func (c *Client) FetchLimitsConfig(ctx context.Context) (time.Duration, int, error) {
@@ -68,17 +75,38 @@ var (
 // discarded by further filtering), the function should return false.
 type RecvFunc func(ctx context.Context, labels LabelSet, e *Entry) (count bool, retErr error)
 
+// labeledEntry stores labels and an entry together.  Loki returns logs as a stream of logs with
+// fields applying to the entire stream, but we want to process log entries in time order, so we
+// copy entries out of streams into this structure, sort them, and then call the RecvFunc in sorted
+// order.
 type labeledEntry struct {
 	labels *LabelSet
 	entry  *Entry
 }
 
+// batchQuery represents a single batched query.  It is only created by run(), and tracks counters
+// across some common operations.
+type batchQuery struct {
+	client    *Client       // loki client
+	query     string        // query strings
+	offset    uint          // original offset
+	limit     int           // current limit
+	newOffset uint          // the offset after this batch ends
+	recv      RecvFunc      // where to send matching logs
+	maxRange  time.Duration // maximum timespan loki will accept
+	batchSize int           // maximum limit loki will accept
+	iter      *TimeIterator // the iterator over the query's time range
+}
+
 // BatchedQueryRange executes multiple QueryRange calls to return logs from the entire time
-// interval, ending when the range is exhausted or the limit is reached.  retOffset is how deep into
-// a stream of identical timestamps the querying is at the time this function returns; a value > 0
-// implies that logs may be being dropped.  Note that if we are only 1 entry into the stream of
-// duplicates at return time, the case is undetectable.  Passing retOffset as offset to a query that
-// starts where this one ends (new start = old end) should extract the remaining logs.
+// interval, ending when the range is exhausted or the limit is reached.  recv is called with log
+// entries sorted in traversal order (forwards or backwards; see TimeIterator), not one stream at a
+// time.
+//
+// retOffset is how deep into a stream of identical timestamps the querying is at the time this
+// function returns; a value > 0 implies that logs may be being dropped.  Passing retOffset as
+// offset to a query in the same direction that starts where this one ends will extract the
+// remaining logs without duplication.
 func (c *Client) BatchedQueryRange(ctx context.Context, query string, start, end time.Time, offset uint, limit int, recv RecvFunc) (retOffset uint, retErr error) {
 	ctx, done := log.SpanContext(ctx, "BatchedQueryRange", zap.String("query", query))
 	defer done(log.Errorp(&retErr))
@@ -99,57 +127,86 @@ func (c *Client) BatchedQueryRange(ctx context.Context, query string, start, end
 	}
 
 	iter := &TimeIterator{Start: start, End: end, Step: maxRange}
-	dir := iter.Direction()
-	for i := 0; iter.Next() && i < 10; i++ { // XXX
-		s, e := iter.Interval()
-		if i == 0 && offset > 0 {
-			// If the query has an offset, resolve that first.
-			retOffset, limit, err = c.queryOneNanosecond(ctx, query, batchSize, s, dir, offset, limit, iter, recv)
-			if err != nil {
-				return 0, errors.Wrapf(err, "initial queryOneNanosecond(i=0, time=%v, offset=%v, limit=%v)", s.Format(time.RFC3339Nano), offset, limit)
+	q := &batchQuery{
+		client:    c,
+		query:     query,
+		offset:    offset,
+		limit:     limit,
+		recv:      recv,
+		maxRange:  maxRange,
+		batchSize: batchSize,
+		iter:      iter,
+	}
+	if err := q.run(ctx); err != nil {
+		return 0, err
+	}
+	return q.newOffset, nil
+}
+
+func (q *batchQuery) run(rctx context.Context) error {
+	for i := 0; q.iter.Next(); i++ {
+		ctx := pctx.Child(rctx, fmt.Sprintf("run(%v)", i))
+		s, e := q.iter.Interval()
+		if i == 0 && q.offset > 0 {
+			var firstNano time.Time
+			if q.iter.forward() {
+				// If forward, get the nanosecond at the query start.
+				firstNano = s
+			} else {
+				// If backward, get the nanosecond at the query end.  (Loki's end is exclusive, so actually the nanosecond before.)
+				firstNano = e.Add(-time.Nanosecond)
 			}
-			if limit <= 0 {
+			// If the query has an offset, resolve that first.
+			if err := q.queryOneNanosecond(ctx, firstNano, q.offset); err != nil {
+				return errors.Wrapf(err, "initial queryOneNanosecond(i=0, time=%v)", s.Format(time.RFC3339Nano))
+			}
+			if q.limit <= 0 {
 				break
 			}
 			// queryOneNanosecond calls handleBatch calls iter.ObserveLast, which will
 			// cause iter.Next() to advance 1 nanosecond in the correct direction.
 			continue
 		}
-
-		resp, err := c.QueryRange(ctx, query, batchSize, s, e, dir, 0, 0, true)
+		q.newOffset = 0
+		resp, err := q.client.QueryRange(ctx, q.query, q.batchSize, s, e, q.iter.Direction(), 0, 0, true)
 		if err != nil {
 			msg := "<nil>"
 			if resp != nil {
 				msg = resp.Status
 			}
-			return 0, errors.Wrapf(err, "QueryRange(i=%v, start=%s, end=%s, limit=%v, dir=%v): (status=%v)", i, s.Format(time.RFC3339Nano), e.Format(time.RFC3339Nano), batchSize, dir, msg)
+			return errors.Wrapf(err, "QueryRange(i=%v, start=%s, end=%s, limit=%v, dir=%v): (status=%v)", i, s.Format(time.RFC3339Nano), e.Format(time.RFC3339Nano), q.batchSize, q.iter.Direction(), msg)
 		}
-		var last time.Time
-		retOffset, limit, last, err = handleBatch(ctx, resp, iter, limit, recv)
+
+		var endingTime time.Time
+		if q.iter.forward() {
+			endingTime = e.Add(-time.Nanosecond)
+		} else {
+			endingTime = s
+		}
+		last, err := q.handleBatch(ctx, resp, endingTime, 0)
 		if err != nil {
-			return 0, errors.Wrapf(err, "handleBatch(%v)", i)
+			return errors.Wrapf(err, "handleBatch(i=%v)", i)
 		}
-		if limit <= 0 {
+		if q.limit <= 0 {
 			break
 		}
-		if retOffset > 0 {
+		if q.newOffset > 0 {
 			// If there's an offset remaining, we need to re-query the last millisecond.
-			retOffset, limit, err = c.queryOneNanosecond(ctx, query, batchSize, last, dir, retOffset, limit, iter, recv)
-			if err != nil {
-				return 0, errors.Wrapf(err, "queryOneNanosecond(i=0, time=%v, offset=%v, limit=%v)", s.Format(time.RFC3339Nano), offset, limit)
+			if err := q.queryOneNanosecond(ctx, last, q.newOffset); err != nil {
+				return errors.Wrapf(err, "queryOneNanosecond(i=%v, time=%v)", i, s.Format(time.RFC3339Nano))
 			}
-			if limit <= 0 {
+			if q.limit <= 0 {
 				break
 			}
 		}
 	}
-	return retOffset, nil
+	return nil
 }
 
-func handleBatch(ctx context.Context, resp *QueryResponse, iter *TimeIterator, limit int, recv RecvFunc) (retOffset uint, retLimit int, last time.Time, err error) {
+func (q *batchQuery) handleBatch(ctx context.Context, resp *QueryResponse, end time.Time, offset uint) (time.Time, error) {
 	streams, ok := resp.Data.Result.(Streams)
 	if !ok {
-		return 0, limit, time.Time{}, errors.Errorf(`unexpected response type from loki; got %q want "streams"`, resp.Data.ResultType)
+		return time.Time{}, errors.Errorf(`unexpected response type from loki; got %q want "streams"`, resp.Data.ResultType)
 	}
 	var entries []labeledEntry
 	for _, stream := range streams {
@@ -158,51 +215,78 @@ func handleBatch(ctx context.Context, resp *QueryResponse, iter *TimeIterator, l
 		}
 	}
 	if len(entries) == 0 {
-		return 0, limit, time.Time{}, nil
+		q.newOffset = 0
+		return time.Time{}, nil
 	}
 	sort.Slice(entries, func(i, j int) bool {
-		if !iter.forward() {
+		if !q.iter.forward() {
 			i, j = j, i
 		}
 		return entries[i].entry.Timestamp.Before(entries[j].entry.Timestamp)
 	})
-	for _, entry := range entries {
-		if t := entry.entry.Timestamp; t.Equal(last) {
-			retOffset++
+	last := entries[0].entry.Timestamp
+	for i, e := range entries {
+		if t := e.entry.Timestamp; t.Equal(last) {
+			q.newOffset++
 		} else {
 			last = t
-			retOffset = 0
+			q.newOffset = 1
 		}
-		iter.ObserveLast(last)
-		count, err := recv(ctx, *entry.labels, entry.entry)
+		if offset > 0 {
+			offset--
+			continue
+		}
+		q.iter.ObserveLast(last)
+		count, err := q.recv(ctx, *e.labels, e.entry)
 		if err != nil {
-			return 0, limit, time.Time{}, errors.Wrap(err, "handle rentry")
+			return time.Time{}, errors.Wrapf(err, "handle entry %v", i)
 		}
 		if count {
-			limit--
-			if limit <= 0 {
-				return retOffset, limit, last, nil
+			q.limit--
+			if q.limit <= 0 {
+				if i+1 < len(entries) && !e.entry.Timestamp.Equal(entries[i+1].entry.Timestamp) {
+					// Peek at the next log, even though we're returning now.
+					// If it's at a different time than this, we know the offset
+					// is 0.
+					q.newOffset = 0
+				}
+				return last, nil
 			}
 		}
 	}
-	return 0, limit, time.Time{}, nil
+	return last, nil
 }
 
-func (c *Client) queryOneNanosecond(ctx context.Context, query string, batchSize int, t time.Time, dir string, offset uint, limit int, iter *TimeIterator, recv RecvFunc) (retOffset uint, retLimit int, retErr error) {
-	resp, err := c.QueryRange(ctx, query, batchSize, t, t.Add(time.Nanosecond), dir, 0, 0, true)
+// BatchSizeWarning is set to true if we have to warn about Loki's batch size being too small.  It's
+// intended to be read by tests, which live in a different package.
+var BatchSizeWarning atomic.Bool
+
+func (q *batchQuery) queryOneNanosecond(ctx context.Context, t time.Time, offset uint) (retErr error) {
+	ctx, done := log.SpanContext(ctx, "queryOneNanosecond", Time("time", t))
+	defer done(log.Errorp(&retErr))
+
+	resp, err := q.client.QueryRange(ctx, q.query, q.batchSize, t, t.Add(time.Nanosecond), q.iter.Direction(), 0, 0, true)
 	if err != nil {
 		msg := "<nil>"
 		if resp != nil {
 			msg = resp.Status
 		}
-		return 0, 0, errors.Wrapf(err, "QueryRange(start=%s, time=%s, limit=%v, dir=%v): (status=%v)", t.Format(time.RFC3339Nano), batchSize, dir, msg)
+		return errors.Wrapf(err, "QueryRange(nanosecond=%s, limit=%v, dir=%v): (status=%v)", t.Format(time.RFC3339Nano), q.batchSize, q.iter.Direction(), msg)
 	}
-	retOffset, retLimit, _, err = handleBatch(ctx, resp, iter, limit, recv)
-	if err != nil {
-		return 0, 0, errors.Wrapf(err, "handleBatch")
+
+	if _, err := q.handleBatch(ctx, resp, t, offset); err != nil {
+		return errors.Wrap(err, "handleBatch")
 	}
-	if retOffset == uint(batchSize) {
-		log.Error(ctx, "skipping logs, because Loki's batch size is too small to retrieve all logs at a duplicate timestamp; this likely indicates a configuration issue with log ingestion", zap.Time("time", t), zap.Int("batchSize", batchSize))
+	if q.newOffset >= uint(q.batchSize) {
+		BatchSizeWarning.Store(true)
+		log.Error(ctx, "skipping logs, because Loki's batch size is too small to retrieve all logs at a duplicate timestamp; this likely indicates a configuration issue with log ingestion", zap.Int("batchSize", q.batchSize))
 	}
-	return retOffset, retLimit, nil
+
+	if q.limit > 0 {
+		// After querying a nanosecond, we always reset the offset, since there is nothing
+		// else Loki can give us.  The exception is if we stopped iteration because of the
+		// limit, in which case the offset is correct.
+		q.newOffset = 0
+	}
+	return nil
 }

@@ -70,15 +70,16 @@ func TestBatchedQueryRange(t *testing.T) {
 	}
 
 	testData := []struct {
-		name       string
-		start, end time.Time
-		limit      int
-		offset     uint
-		maxRange   time.Duration
-		batchSize  int
-		pick       func(e *client.Entry) bool
-		want       []string
-		wantOffset uint
+		name                 string
+		start, end           time.Time
+		limit                int
+		offset               uint
+		maxRange             time.Duration
+		batchSize            int
+		pick                 func(e *client.Entry) bool
+		want                 []string
+		wantOffset           uint
+		wantBatchSizeWarning bool
 	}{
 		{
 			name: "end time before logs start",
@@ -129,6 +130,9 @@ func TestBatchedQueryRange(t *testing.T) {
 				`/"message":"8"/`,
 				`/"message":"9"/`,
 			},
+			// Because the limit was hit at the end of the batch, we don't know if there
+			// are more logs or not.
+			wantOffset: 1,
 		},
 		{
 			name:  "start of logs, backward",
@@ -144,9 +148,10 @@ func TestBatchedQueryRange(t *testing.T) {
 		},
 		{
 			name:      "backwards, small batch",
-			end:       time.Date(2024, 5, 1, 0, 0, 0, 9, time.UTC),
+			end:       time.Date(2024, 5, 1, 0, 0, 0, 10, time.UTC),
 			batchSize: 5,
 			want: []string{
+				`/"message":"10"/`,
 				`/"message":"9"/`,
 				`/"message":"8"/`,
 				`/"message":"7"/`,
@@ -191,31 +196,177 @@ func TestBatchedQueryRange(t *testing.T) {
 			limit: 5,
 			want: []string{
 				`/"message":"79"/`,
-				`/"message":"80"/`,
-				`/"message":"duplicate 0"/`,
-				`/"message":"duplicate 1"/`,
-				`/"message":"duplicate 2"/`,
+				`/"message":"80"/`,          // next log has offset = 1
+				`/"message":"duplicate 0"/`, // offset = 2
+				`/"message":"duplicate 1"/`, // offset = 3
+				`/"message":"duplicate 2"/`, // offset = 4
 			},
-			wantOffset: 3,
+			wantOffset: 4,
 		},
 		{
 			name:   "offset into a long string of duplicate timestamps",
 			start:  time.Date(2024, 5, 1, 0, 0, 0, 80, time.UTC),
-			offset: 3,
+			offset: 4,
 			limit:  5,
 			want: []string{
-				`/"message":"duplicate 3"/`,
+				`/"message":"duplicate 3"/`, // offset = 5
 				`/"message":"duplicate 4"/`,
 				`/"message":"duplicate 5"/`,
 				`/"message":"duplicate 6"/`,
 				`/"message":"duplicate 7"/`,
 			},
-			wantOffset: 8,
+			wantOffset: 9,
+		},
+		{
+			name:      "offset into a long string of duplicate timestamps, limited by batch size",
+			start:     time.Date(2024, 5, 1, 0, 0, 0, 80, time.UTC),
+			end:       time.Date(2024, 5, 1, 0, 0, 0, 82, time.UTC),
+			offset:    4,
+			batchSize: 6,
+			want: []string{
+				`/"message":"duplicate 3"/`,
+				`/"message":"duplicate 4"/`,
+				`/"message":"81"/`,
+				`/"message":"82"/`,
+			},
+			wantBatchSizeWarning: true,
+		},
+		{
+			name:      "offset at a long string of duplicate timestamps, limited by batch size",
+			start:     time.Date(2024, 5, 1, 0, 0, 0, 80, time.UTC),
+			end:       time.Date(2024, 5, 1, 0, 0, 0, 80, time.UTC),
+			offset:    4,
+			batchSize: 6,
+			want: []string{
+				`/"message":"duplicate 3"/`,
+				`/"message":"duplicate 4"/`,
+			},
+			wantBatchSizeWarning: true,
+		},
+		{
+			name:  "middle of logs, backward, into a long string of duplicate timestamps",
+			end:   time.Date(2024, 5, 1, 0, 0, 0, 81, time.UTC),
+			limit: 5,
+			want: []string{
+				`/"message":"81"/`,
+				`/"message":"duplicate 99"/`, // next log has offset = 1
+				`/"message":"duplicate 98"/`, // offset = 2
+				`/"message":"duplicate 97"/`, // offset = 3
+				`/"message":"duplicate 96"/`, // offset = 4
+			},
+			wantOffset: 4,
+		},
+		{
+			name:   "middle of logs, backward, with offset",
+			start:  time.Date(2024, 5, 1, 0, 0, 0, 80, time.UTC),
+			end:    time.Date(2024, 5, 1, 0, 0, 0, 79, time.UTC),
+			offset: 4,
+			limit:  1,
+			want: []string{
+				`/"message":"duplicate 95"/`, // offset = 5
+			},
+			wantOffset: 5,
+		},
+		{
+			name:      "backward offset into a long string of duplicate timestamps, limited by batch size",
+			start:     time.Date(2024, 5, 1, 0, 0, 0, 81, time.UTC),
+			end:       time.Date(2024, 5, 1, 0, 0, 0, 79, time.UTC),
+			batchSize: 2,
+			want: []string{
+				`/"message":"81"/`,           // start of first QueryRange
+				`/"message":"duplicate 99"/`, // end of first QueryRange
+				`/"message":"duplicate 98"/`, // queryOneNanosecond is called, skips 99, returns 98, and hits the limit
+				`/"message":"79"/`,           // last matching entry (based on end time)
+			},
+			wantBatchSizeWarning: true,
+		},
+		{
+			name:      "backward offset into a long string of duplicate timestamps, limited by batch size of 1",
+			start:     time.Date(2024, 5, 1, 0, 0, 0, 81, time.UTC),
+			end:       time.Date(2024, 5, 1, 0, 0, 0, 79, time.UTC),
+			batchSize: 1,
+			want: []string{
+				`/"message":"81"/`,
+				`/"message":"duplicate 99"/`,
+				`/"message":"79"/`,
+			},
+			wantBatchSizeWarning: true,
+		},
+		{
+			name:      "backward offset into a long string of duplicate timestamps, limited by batch size of 1 and limit",
+			start:     time.Date(2024, 5, 1, 0, 0, 0, 81, time.UTC),
+			end:       time.Date(2024, 5, 1, 0, 0, 0, 80, time.UTC),
+			batchSize: 1,
+			limit:     2,
+			want: []string{
+				`/"message":"81"/`,
+				`/"message":"duplicate 99"/`,
+			},
+			wantBatchSizeWarning: true,
+			wantOffset:           1,
+		},
+		{
+			name:   "offset beyond the end",
+			start:  time.Date(2024, 5, 1, 0, 0, 0, 80, time.UTC),
+			offset: 1000,
+		},
+		{
+			name:                 "offset beyond the end, limited by batch size",
+			start:                time.Date(2024, 5, 1, 0, 0, 0, 80, time.UTC),
+			batchSize:            10,
+			offset:               1000,
+			wantBatchSizeWarning: true,
+		},
+		{
+			name:   "offset beyond the end, with limit",
+			start:  time.Date(2024, 5, 1, 0, 0, 0, 80, time.UTC),
+			limit:  10,
+			offset: 1000,
+		},
+		{
+			name:                 "offset beyond the end, limited by batch size and limit",
+			start:                time.Date(2024, 5, 1, 0, 0, 0, 80, time.UTC),
+			batchSize:            10,
+			limit:                10,
+			offset:               1000,
+			wantBatchSizeWarning: true,
+		},
+		{
+			name:  "middle of logs, forward, hitting the first duplicate timestamp",
+			start: time.Date(2024, 5, 1, 0, 0, 0, 79, time.UTC),
+			limit: 2,
+			want: []string{
+				`/"message":"79"/`,
+				`/"message":"80"/`, // offset = 1
+			},
+			wantOffset: 1,
+		},
+		{
+			name:      "middle of logs, forward, no duplicate",
+			start:     time.Date(2024, 5, 1, 0, 0, 0, 78, time.UTC),
+			batchSize: 3,
+			limit:     2,
+			want: []string{
+				`/"message":"78"/`,
+				`/"message":"79"/`,
+			},
+		},
+		{
+			name:      "middle of logs, forward, no duplicate, but we can't know",
+			start:     time.Date(2024, 5, 1, 0, 0, 0, 78, time.UTC),
+			batchSize: 2,
+			limit:     2,
+			want: []string{
+				`/"message":"78"/`,
+				`/"message":"79"/`,
+			},
+			wantOffset: 1,
 		},
 	}
 	for _, test := range testData {
 		t.Run(test.name, func(t *testing.T) {
 			ctx := pctx.TestContext(t)
+			client.BatchSizeWarning.Store(false)
 			if test.limit == 0 {
 				test.limit = math.MaxInt
 			}
@@ -253,6 +404,9 @@ func TestBatchedQueryRange(t *testing.T) {
 			}
 			if got, want := gotOffset, test.wantOffset; got != want {
 				t.Errorf("offset:\n  got: %v\n want: %v", got, want)
+			}
+			if got, want := client.BatchSizeWarning.Load(), test.wantBatchSizeWarning; got != want {
+				t.Errorf("batch size warning:\n  got: %v\n want: %v", got, want)
 			}
 			require.NoDiff(t, test.want, got, []cmp.Option{cmputil.RegexpStrings()})
 		})

@@ -13,12 +13,11 @@ const maxNanoseconds = 999_999_999
 
 func TestTimeIterator(t *testing.T) {
 	testData := []struct {
-		name      string
-		endOfTime time.Time
-		iterator  *TimeIterator
-		limit     int
-		logs      []time.Time
-		want      []timeRange
+		name     string
+		iterator *TimeIterator
+		limit    int
+		logs     []time.Time
+		want     []timeRange
 	}{
 		{
 			name: "exactly one nanosecond",
@@ -98,11 +97,11 @@ func TestTimeIterator(t *testing.T) {
 			},
 		},
 		{
-			name:      "forward traversal to the end of time",
-			endOfTime: time.Date(2020, 1, 2, 23, 59, 59, 0, time.UTC),
+			name: "forward traversal to the end of time",
 			iterator: &TimeIterator{
 				Start: time.Date(2020, 1, 1, 6, 0, 0, 0, time.UTC),
 				Step:  24 * time.Hour,
+				now:   time.Date(2020, 1, 2, 23, 59, 59, 0, time.UTC),
 			},
 			want: []timeRange{
 				{time.Date(2020, 1, 1, 6, 0, 0, 0, time.UTC), time.Date(2020, 1, 2, 6, 0, 0, 0, time.UTC)},
@@ -248,14 +247,6 @@ func TestTimeIterator(t *testing.T) {
 
 	for _, test := range testData {
 		t.Run(test.name, func(t *testing.T) {
-			if !test.endOfTime.IsZero() {
-				t.Log("using special end of time value")
-				testingEndOfTime = test.endOfTime
-				t.Cleanup(func() {
-					t.Log("restoring end of time value")
-					testingEndOfTime = time.Time{}
-				})
-			}
 			var got []timeRange
 			var logsEverUsed bool
 			n := len(test.want) + 5

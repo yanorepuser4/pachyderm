@@ -44,7 +44,7 @@ var lokiClient = &http.Client{
 
 // QueryRange queries Loki in a given time range.
 func (c *Client) QueryRange(ctx context.Context, queryStr string, limit int, start, end time.Time, direction string, step, interval time.Duration, quiet bool) (resp *QueryResponse, retErr error) {
-	ctx, done := log.SpanContext(ctx, "QueryRange") //, zap.Time("start", start), zap.Time("end", end), zap.String("direction", direction), zap.Int("limit", limit))
+	ctx, done := log.SpanContext(ctx, "QueryRange", zap.Time("start", start), zap.Time("end", end), zap.String("direction", direction), zap.Int("limit", limit))
 	defer func() {
 		done(zap.Object("response", resp), zap.Error(retErr))
 	}()
