@@ -236,6 +236,12 @@ func (q *batchQuery) handleBatch(ctx context.Context, resp *QueryResponse, end t
 			offset--
 			continue
 		}
+		// Note: this constrains the iterator more than is strictly necessary; if we
+		// recevied less than batchSize logs, we know that `end` is really the start of the
+		// next iteration, not the time of the last log we saw.  But as you go forward in
+		// time, some logs may not have arrived yet, and since we use the iterator to
+		// provide paging hints, doing this optimization would cause some of those
+		// new-arriving entries to be skipped over when paging.
 		q.iter.ObserveLast(last)
 		count, err := q.recv(ctx, *e.labels, e.entry)
 		if err != nil {
