@@ -74,12 +74,16 @@ class BaseHandler(APIHandler):
     def client(self, new_client: Client) -> None:
         # server_root_dir is the root path from which all data and notebook files
         #   are relative. This may be different from the CWD.
-        root_dir = Path(self.settings.get("server_root_dir", os.getcwd())).resolve()
+        root_dir = Path(
+            os.path.expanduser(self.settings.get("server_root_dir")), os.getcwd()
+        ).resolve()
 
         self.settings["pachyderm_client"] = new_client
         self.settings["pfs_contents_manager"] = PFSManager(client=new_client)
         self.settings["datum_contents_manager"] = DatumManager(client=new_client)
-        self.settings["pachyderm_pps_client"] = PPSClient(client=new_client, root_dir=root_dir)
+        self.settings["pachyderm_pps_client"] = PPSClient(
+            client=new_client, root_dir=root_dir
+        )
 
     @property
     def config_file(self) -> Path:
@@ -121,6 +125,7 @@ class ReposHandler(BaseHandler):
                 status_code=getattr(e, "code", 500),
                 reason=f"Error listing mounts: {e}.",
             )
+
 
 class MountDatumsHandler(BaseHandler):
     @tornado.web.authenticated
@@ -246,9 +251,7 @@ class PFSHandler(ContentsHandler):
             if pagination_marker_uri:
                 pagination_marker = pfs.File.from_uri(pagination_marker_uri)
             number = int(self.get_query_argument("number", default="100"))
-            branch_uri = self.get_query_argument(
-                "branch_uri", default=None
-            )
+            branch_uri = self.get_query_argument("branch_uri", default=None)
             branch: pfs.Branch = None
             if branch_uri:
                 branch = pfs.Branch.from_uri(branch_uri)
@@ -270,6 +273,7 @@ class PFSHandler(ContentsHandler):
             raise tornado.web.HTTPError(status_code=400, reason=repr(e))
         except Exception as e:
             raise tornado.web.HTTPError(status_code=500, reason=repr(e))
+
 
 class ViewDatumHandler(ContentsHandler):
     @property
@@ -506,9 +510,7 @@ class ExploreDownloadHandler(BaseHandler):
     @tornado.web.authenticated
     async def put(self, path):
         try:
-            branch_uri = self.get_query_argument(
-                "branch_uri", default=None
-            )
+            branch_uri = self.get_query_argument("branch_uri", default=None)
             branch: pfs.Branch = None
             if not branch_uri:
                 raise ValueError("branch_uri must be defined to download")
@@ -630,10 +632,14 @@ def setup_handlers(
 
     # server_root_dir is the root path from which all data and notebook files
     #   are relative. This may be different from the CWD.
-    root_dir = Path(web_app.settings.get("server_root_dir", os.getcwd())).resolve()
+    root_dir = Path(
+        os.path.expanduser(web_app.settings.get("server_root_dir")), os.getcwd()
+    ).resolve()
     if client:
         web_app.settings["pachyderm_client"] = client
-        web_app.settings["pachyderm_pps_client"] = PPSClient(client=client, root_dir=root_dir)
+        web_app.settings["pachyderm_pps_client"] = PPSClient(
+            client=client, root_dir=root_dir
+        )
         web_app.settings["pfs_contents_manager"] = PFSManager(client=client)
         web_app.settings["datum_contents_manager"] = DatumManager(client=client)
 
